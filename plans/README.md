@@ -14,6 +14,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 |------|-------|----------|--------|------------|--------|
 | 001  | Scaffold the `bike_rl` package, Config, RunContext, deps, and CI | P1 | M | — | DONE |
 | 002  | `graph_utils.py` + `candidates.py` with tests | P1 | M | 001 | DONE |
+| 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -31,7 +32,13 @@ REJECTED (with one-line rationale).
     mutation, §6.1 OSM cache, §6.5 O(V·E) loop. Defines the `Candidate`
     equality contract `(u, v, length, road_priority)` that plan 003+'s
     optimisers rely on.
-  - 003: `metrics.py` + `objective.py` logic with tests (depends on 002)
+  - 003: `metrics.py` pure functions + incremental `MetricsState`/`UnionFind`
+    (§3.6/§5.7/§6.2/§6.3/§6.7) with `test_metrics.py` (depends on 002) —
+    written `plans/003-metrics-and-tests.md`. Fixes the near-constant
+    population-served signal (§5.7); establishes the stable
+    `connectivity`/`coverage`/`fragmentation` signatures that `objective.py`
+    and the optimisers import. `objective.py` is **not** in this plan — it is
+    the first optimiser-side plan (OPTIMIZER_SPEC §11.1) and depends on 003.
   - 004: `env.py` (MaskablePPO action masking, fixed reward, fixed incremental
     updates) + `test_env.py`/`test_reward.py` (depends on 003)
   - 005: `training.py` + OSM cache + `test_training.py` (depends on 004)
