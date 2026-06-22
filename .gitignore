@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project artefacts (per RECREATE_SPEC §8)
+bike_path_figures/
+osm_cache/
+checkpoints/
+*.zip
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

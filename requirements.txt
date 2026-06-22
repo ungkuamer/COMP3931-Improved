@@ -1,0 +1,15 @@
+osmnx>=1.9
+networkx>=3.2
+gymnasium>=0.29
+stable-baselines3>=2.2
+sb3-contrib>=2.2
+rustworkx>=0.14
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+geopandas>=0.14
+shapely>=2.0
+matplotlib>=3.8
+tqdm>=4.66
+pyyaml>=6.0
+ortools>=9.10

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bike-path-rl"
+version = "0.1.0"
+description = "RL and direct-optimiser baselines for budgeted bike-network expansion"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "COMP3931-Improved" }]
+dependencies = [
+    "osmnx>=1.9",
+    "networkx>=3.2",
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.2",
+    "sb3-contrib>=2.2",
+    "rustworkx>=0.14",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "geopandas>=0.14",
+    "shapely>=2.0",
+    "matplotlib>=3.8",
+    "tqdm>=4.66",
+    "pyyaml>=6.0",
+    "ortools>=9.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+bike-rl = "bike_rl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bike_rl*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+ignore = ["D100", "D102", "D104", "D105", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["rustworkx.*", "osmnx.*", "stable_baselines3.*", "sb3_contrib.*", "ortools.*", "geopandas.*", "shapely.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
