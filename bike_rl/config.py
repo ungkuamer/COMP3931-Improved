@@ -22,7 +22,10 @@ class Config:
         continuity_bonus: Bonus for continuing an existing bike path.
         fragmentation_weight: Weight penalising network fragmentation.
         isolation_penalty: Negative penalty for isolated components.
+        w_budget_efficiency: Weight on the budget-efficiency reward term (§5.5).
         edge_cost_factor: Cost multiplier per edge length.
+        budget_efficiency_cap: Upper clamp on the budget-efficiency term (§5.5).
+        max_episode_steps: Step cap before truncation (0 = disabled; §3.4 done-by-budget only).
         default_edge_length: Length used when an edge has no ``length`` attribute.
         osm_cache_dir: Directory for the OSMnx on-disk cache (relative to CWD).
         min_candidate_length: Minimum candidate edge length (metres).
@@ -62,9 +65,12 @@ class Config:
     continuity_bonus: float = 50.0
     fragmentation_weight: float = 200.0
     isolation_penalty: float = -100.0
+    w_budget_efficiency: float = 0.1
 
     # Cost / budget
     edge_cost_factor: float = 10.0
+    budget_efficiency_cap: float = 200.0
+    max_episode_steps: int = 0
 
     # OSM / graph loading
     default_edge_length: float = 1.0
