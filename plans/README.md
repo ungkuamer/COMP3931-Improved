@@ -13,6 +13,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001  | Scaffold the `bike_rl` package, Config, RunContext, deps, and CI | P1 | M | — | DONE |
+| 002  | `graph_utils.py` + `candidates.py` with tests | P1 | M | 001 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -24,7 +25,12 @@ REJECTED (with one-line rationale).
   (002–007 + optimiser plans) import from it.** Execute 001 first.
 - Planned (not yet written) downstream plans, per `RECREATE_SPEC.md` §11 and
   `OPTIMIZER_SPEC.md` §11:
-  - 002: `graph_utils.py` + `candidates.py` with tests (depends on 001)
+  - 002: `graph_utils.py` + `candidates.py` with tests (depends on 001) —
+    written `plans/002-graph-utils-and-candidates.md`. Adds two `Config`
+    fields (`default_edge_length`, `osm_cache_dir`). Fixes §5.8 source-graph
+    mutation, §6.1 OSM cache, §6.5 O(V·E) loop. Defines the `Candidate`
+    equality contract `(u, v, length, road_priority)` that plan 003+'s
+    optimisers rely on.
   - 003: `metrics.py` + `objective.py` logic with tests (depends on 002)
   - 004: `env.py` (MaskablePPO action masking, fixed reward, fixed incremental
     updates) + `test_env.py`/`test_reward.py` (depends on 003)

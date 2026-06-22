@@ -23,6 +23,8 @@ class Config:
         fragmentation_weight: Weight penalising network fragmentation.
         isolation_penalty: Negative penalty for isolated components.
         edge_cost_factor: Cost multiplier per edge length.
+        default_edge_length: Length used when an edge has no ``length`` attribute.
+        osm_cache_dir: Directory for the OSMnx on-disk cache (relative to CWD).
         min_candidate_length: Minimum candidate edge length (metres).
         max_candidate_length: Maximum candidate edge length (metres).
         road_priorities: Mapping from highway type to priority score.
@@ -63,6 +65,10 @@ class Config:
 
     # Cost / budget
     edge_cost_factor: float = 10.0
+
+    # OSM / graph loading
+    default_edge_length: float = 1.0
+    osm_cache_dir: str = "osm_cache"
 
     # Candidate filtering
     min_candidate_length: float = 100.0
