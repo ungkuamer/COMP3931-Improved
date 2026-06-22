@@ -15,6 +15,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 001  | Scaffold the `bike_rl` package, Config, RunContext, deps, and CI | P1 | M | — | DONE |
 | 002  | `graph_utils.py` + `candidates.py` with tests | P1 | M | 001 | DONE |
 | 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | DONE |
+| 004  | `env.py` (MaskablePPO action masking §5.4, fixed budget-efficiency reward §5.5, full incremental state §5.6, logging §5.11, episode info §5.12) + `test_env.py`/`test_reward.py` | P1 | L | 003 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -40,7 +41,16 @@ REJECTED (with one-line rationale).
     and the optimisers import. `objective.py` is **not** in this plan — it is
     the first optimiser-side plan (OPTIMIZER_SPEC §11.1) and depends on 003.
   - 004: `env.py` (MaskablePPO action masking, fixed reward, fixed incremental
-    updates) + `test_env.py`/`test_reward.py` (depends on 003)
+    updates) + `test_env.py`/`test_reward.py` (depends on 003) — written
+    `plans/004-env-and-reward.md`. Fixes §5.4 (fixed-size action space +
+    `action_masks()`), §5.5 (Config-weighted budget-efficiency term, capped),
+    §5.6 (always-full state read via `MetricsState`, cheap through the
+    version cache), §5.11 (logging, no bare `except`), §5.12 (SB3-style
+    `info["episode"]` emitted on termination), §5.14 (cache versioning via
+    `MetricsState`). Adds three `Config` fields (`w_budget_efficiency`,
+    `budget_efficiency_cap`, `max_episode_steps`). Does **not** import
+    `sb3_contrib` — that is plan 005's concern; the env only exposes
+    `action_masks()`.
   - 005: `training.py` + OSM cache + `test_training.py` (depends on 004)
   - 006: `evaluation.py` + `plotting.py` (headless-safe) + `test_cli.py` (depends on 005)
   - 007: `cli.py` + SLURM scripts (depends on 006)
