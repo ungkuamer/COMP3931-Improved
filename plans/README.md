@@ -14,7 +14,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 |------|-------|----------|--------|------------|--------|
 | 001  | Scaffold the `bike_rl` package, Config, RunContext, deps, and CI | P1 | M | — | DONE |
 | 002  | `graph_utils.py` + `candidates.py` with tests | P1 | M | 001 | DONE |
-| 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | TODO |
+| 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
