@@ -16,6 +16,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 002  | `graph_utils.py` + `candidates.py` with tests | P1 | M | 001 | DONE |
 | 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | DONE |
 | 004  | `env.py` (MaskablePPO action masking §5.4, fixed budget-efficiency reward §5.5, full incremental state §5.6, logging §5.11, episode info §5.12) + `test_env.py`/`test_reward.py` | P1 | L | 003 | DONE |
+| 005  | `training.py` (MaskablePPO loop §3.7, SubprocVecEnv with parent-loaded graphs §6.1, timestep rounding, episode-capturing callback §5.12) + `test_training.py` | P1 | M | 004 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -51,7 +52,16 @@ REJECTED (with one-line rationale).
     `budget_efficiency_cap`, `max_episode_steps`). Does **not** import
     `sb3_contrib` — that is plan 005's concern; the env only exposes
     `action_masks()`.
-  - 005: `training.py` + OSM cache + `test_training.py` (depends on 004)
+  - 005: `training.py` + OSM cache + `test_training.py` (depends on 004) —
+    written `plans/005-training-and-tests.md`. Uses `MaskablePPO` from
+    `sb3-contrib` with `MaskableActorCriticPolicy` (consumes plan 004's
+    `action_masks()`); realises §6.1 by taking parent-loaded in-memory
+    graphs in `make_env`/`make_vec_env` so `SubprocVecEnv` workers receive
+    them via `cloudpickle` and never re-download OSM. Adds `make_vec_env`
+    (new helper, not in stub); `train_model` rounds `total_timesteps` up to
+    `ppo_n_steps * n_envs`, attaches `TrainingProgressCallback` (reads SB3
+    `info["episode"]` every step — §5.12) + `CheckpointCallback` (writes
+    under `run_context.output_dir`). **Zero new `Config` fields.**
   - 006: `evaluation.py` + `plotting.py` (headless-safe) + `test_cli.py` (depends on 005)
   - 007: `cli.py` + SLURM scripts (depends on 006)
   - 008: full `ruff`/`mypy`/`pytest --cov` pass at ≥80% coverage (depends on 007)
