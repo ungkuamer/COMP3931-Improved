@@ -42,7 +42,7 @@ def _safe_label(s: str) -> str:
     Returns:
         A safe label (e.g. ``"otley_uk"``).
     """
-    out = "".join(ch if ch.isalnum() and ch.islower() else "_" for ch in s.lower())
+    out = "".join(ch if ch.isalnum() else "_" for ch in s.lower())
     # collapse repeated underscores
     while "__" in out:
         out = out.replace("__", "_")
