@@ -195,6 +195,7 @@ def train_model(
     cfg: Config,
     run_context: RunContext,
     total_timesteps: int,
+    progress_callback: TrainingProgressCallback | None = None,
 ) -> MaskablePPO:
     """Train a ``MaskablePPO`` model on ``envs`` (RECREATE_SPEC §3.7, §5.4).
 
@@ -212,6 +213,11 @@ def train_model(
         run_context: Per-run output context for checkpoint paths.
         total_timesteps: Requested timesteps; rounded up to
             ``ppo_n_steps * envs.num_envs``.
+        progress_callback: Optional pre-built callback. If given, it is used
+            in place of the internally-created one so the caller (the CLI)
+            can read ``.episode_rewards`` after training to plot
+            ``training_rewards.png`` (§9). If None, a fresh callback is
+            created internally (existing behaviour, unchanged).
 
     Returns:
         The trained ``MaskablePPO`` model.
@@ -246,7 +252,11 @@ def train_model(
         device=cfg.device,
         verbose=0,
     )
-    progress_cb = TrainingProgressCallback(rounded, progress_bar=False)
+    progress_cb = (
+        progress_callback
+        if progress_callback is not None
+        else TrainingProgressCallback(rounded, progress_bar=False)
+    )
     ckpt_cb = CheckpointCallback(
         save_freq=save_freq,
         save_path=str(ckpt_dir),
