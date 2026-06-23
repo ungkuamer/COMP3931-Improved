@@ -68,4 +68,4 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --cov=bike_rl --cov-report=term-missing --cov-fail-under=80"
