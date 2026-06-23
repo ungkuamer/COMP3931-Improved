@@ -19,6 +19,8 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 005  | `training.py` (MaskablePPO loop §3.7, SubprocVecEnv with parent-loaded graphs §6.1, timestep rounding, episode-capturing callback §5.12) + `test_training.py` | P1 | M | 004 | DONE |
 | 006  | `evaluation.py` (deterministic rollouts + best-by-reward §3.8) + `plotting.py` (headless §5.10, GeoJSON §8) + `test_evaluation.py`/`test_plotting.py` | P1 | M | 005 | DONE |
 | 007  | `cli.py` (RL pipeline end-to-end §9) + `test_cli.py` (SLURM scripts deferred — operator no longer runs on HPC) | P1 | M | 006 | TODO |
+| 008  | QA gate: ruff/mypy/pytest --cov at ≥80% | P1 | S | 007 | DONE |
+| 009  | End-to-end headless smoke test (small city + tiny bbox); fix `load_bbox_graph` osmnx-2.x axis order | P1 | S | 008 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -91,7 +93,8 @@ REJECTED (with one-line rationale).
     **not** import `bike_rl.optim` (still stubs); optimiser `--compare`
     dispatch is a future optimiser plan (OPTIMIZER_SPEC §11.5/6).
   - 008: full `ruff`/`mypy`/`pytest --cov` pass at ≥80% coverage (depends on 007)
-  - 009: end-to-end smoke test on a tiny bbox (depends on 008)
+  - 009: end-to-end headless smoke test (small city + tiny bbox); fix load_bbox_graph osmnx-2.x axis order
+  - 009 is DONE. `osmnx>=2.0` is now the realistic lower bound (the code already uses the osmnx 2.x API `graph_from_bbox((tuple),...)`); a future executor must not try to support osmnx 1.x.
   - Optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
     `optim/local_search.py`, `optim/ilp.py`, `optim/evaluate.py` — depend on
     003 (shared objective/metrics).
