@@ -21,6 +21,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 007  | `cli.py` (RL pipeline end-to-end §9) + `test_cli.py` (SLURM scripts deferred — operator no longer runs on HPC) | P1 | M | 006 | DONE |
 | 008  | QA gate: enforce ≥80% `bike_rl` coverage in CI (config-only — add `--cov=bike_rl --cov-report=term-missing --cov-fail-under=80` to pytest `addopts`; ruff/mypy already green after caveman skill removal) | P1 | S | 007 | DONE |
 | 009  | End-to-end headless smoke test (small city + tiny bbox); fix `load_bbox_graph` osmnx-2.x axis order | P1 | S | 008 | DONE |
+| 010  | Implement canonical objective (`objective.py`) + `test_objective.py` (OPTIMIZER_SPEC §11.1) | P1 | M | 003 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -118,9 +119,18 @@ REJECTED (with one-line rationale).
   - 009 is now **DONE**. `osmnx>=2.0` is the realistic lower bound (the code
     already uses the osmnx 2.x API); a future executor must not try to support
     osmnx 1.x.
-  - Optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
+  - 010 is now **DONE** (HEAD caeda5f). 010 (objective.py) is the **first optimiser plan** (OPTIMIZER_SPEC
+    §11.1). It depends on 003 (metrics) and 002 (Candidate). It implements
+    the canonical `objective`/`objective_delta`/`apply_added_edges` and the
+    `Edge` protocol that all later optimiser plans (greedy/local_search/
+    ilp/evaluate, §11 items 2–5) import. `objective_delta` is
+    correctness-first (full recompute difference); a `MetricsState`-backed
+    incremental version is a later perf plan. The RL reward is **not**
+    rewired to `objective_delta` here — that is a separate, later concern
+    (§3.2).
+  - Remaining optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
     `optim/local_search.py`, `optim/ilp.py`, `optim/evaluate.py` — depend on
-    003 (shared objective/metrics).
+    010 (and transitively 003).
 
 ## Findings considered and rejected
 
