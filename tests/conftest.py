@@ -76,10 +76,7 @@ def mock_osm(monkeypatch):
     def fake_bbox(bbox, network_type="bike", **kw):
         calls["bbox"].append(
             {
-                "N": bbox[0],
-                "S": bbox[1],
-                "E": bbox[2],
-                "W": bbox[3],
+                "osmnx_bbox": tuple(bbox),
                 "network_type": network_type,
                 **kw,
             }

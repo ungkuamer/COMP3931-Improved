@@ -148,14 +148,16 @@ def test_load_city_graph_network_type_walk(
 def test_load_bbox_graph_uses_nsew_order(
     mock_osm: _MockCalls,
 ) -> None:
-    """load_bbox_graph passes (N, S, E, W) in correct order (RECREATE_SPEC §3.1)."""
+    """load_bbox_graph translates (N,S,E,W) → osmnx-2.x (W,S,E,N).
+
+    RECREATE_SPEC §3.1 exposes (N,S,E,W) to users; osmnx ≥2.0 expects
+    `(left, bottom, right, top)` = `(W, S, E, N)`.
+    """
     load_bbox_graph(53.9, 53.8, -1.6, -1.7, Config())
     assert len(mock_osm["bbox"]) == 1
     call = mock_osm["bbox"][0]
-    assert call["N"] == 53.9
-    assert call["S"] == 53.8
-    assert call["E"] == -1.6
-    assert call["W"] == -1.7
+    assert call["osmnx_bbox"] == (-1.7, 53.8, -1.6, 53.9)
+    assert call["network_type"] == "bike"
 
 
 def test_cache_graph_round_trip(
