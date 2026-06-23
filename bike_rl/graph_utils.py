@@ -120,13 +120,18 @@ def load_bbox_graph(
         cfg: Config (used to enable the OSM cache).
         network_type: OSMnx network type (``"bike"`` or ``"walk"``).
 
+    Note:
+        Internally passes ``(west, south, east, north)`` to
+        ``ox.graph_from_bbox`` to match osmnx ≥2.0's ``(left, bottom, right, top)``
+        signature (``W, S, E, N``).  The public API keeps ``(N,S,E,W)`` order.
+
     Returns:
         The downloaded MultiDiGraph.
     """
     import osmnx as ox
 
     configure_osm_cache(cfg)
-    return ox.graph_from_bbox((north, south, east, west), network_type=network_type)
+    return ox.graph_from_bbox((west, south, east, north), network_type=network_type)
 
 
 def cache_graph(graph: _NXGraph, path: Path) -> None:
