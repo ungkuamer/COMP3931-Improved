@@ -17,6 +17,8 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 003  | `metrics.py` (connectivity, path efficiency, fragmentation, coverage §5.7 fix) + `test_metrics.py` | P1 | M | 002 | DONE |
 | 004  | `env.py` (MaskablePPO action masking §5.4, fixed budget-efficiency reward §5.5, full incremental state §5.6, logging §5.11, episode info §5.12) + `test_env.py`/`test_reward.py` | P1 | L | 003 | DONE |
 | 005  | `training.py` (MaskablePPO loop §3.7, SubprocVecEnv with parent-loaded graphs §6.1, timestep rounding, episode-capturing callback §5.12) + `test_training.py` | P1 | M | 004 | DONE |
+| 006  | `evaluation.py` (deterministic rollouts + best-by-reward §3.8) + `plotting.py` (headless §5.10, GeoJSON §8) + `test_evaluation.py`/`test_plotting.py` | P1 | M | 005 | DONE |
+| 007  | `cli.py` (RL pipeline end-to-end §9) + `test_cli.py` (SLURM scripts deferred — operator no longer runs on HPC) | P1 | M | 006 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -62,8 +64,32 @@ REJECTED (with one-line rationale).
     `ppo_n_steps * n_envs`, attaches `TrainingProgressCallback` (reads SB3
     `info["episode"]` every step — §5.12) + `CheckpointCallback` (writes
     under `run_context.output_dir`). **Zero new `Config` fields.**
-  - 006: `evaluation.py` + `plotting.py` (headless-safe) + `test_cli.py` (depends on 005)
-  - 007: `cli.py` + SLURM scripts (depends on 006)
+  - 006: `evaluation.py` (deterministic rollouts + `EvaluationTracker`, best
+    by **reward** per §3.8) + `plotting.py` (headless-safe §5.10, GeoJSON
+    export §8) + `tests/test_evaluation.py` / `tests/test_plotting.py`
+    (depends on 005) — written `plans/006-evaluation-and-plotting.md`.
+    **Reconciliation:** RECREATE_SPEC §11 item 6 also lists `test_cli.py`, but
+    `cli.py` is plan 007's deliverable and does not exist yet (stub raising
+    `NotImplementedError("Full CLI in plan 007")`). `test_cli.py` is
+    therefore **moved to plan 007**, which builds `cli.py` and its tests
+    together. Plan 006 does **not** import `bike_rl.objective` / `optim`
+    (still stubs); it scores by reward per §3.8. The canonical-objective
+    scoring of an RL policy (OPTIMIZER_SPEC §3.2/§8 `evaluate_rl_policy`)
+    is a later optimiser-plan concern.
+  - 007: `cli.py` + `tests/test_cli.py` (SLURM scripts **deferred** by operator
+    request — no HPC queue; RECREATE_SPEC §10 out of scope) — written
+    `plans/007-cli-and-tests.md`. Wires the RL pipeline end-to-end
+    (load graphs once in parent §6.1 → `make_vec_env` → `train_model` → save
+    `final_model.zip` → `evaluate_and_visualize` → `run_summary.txt` + runtime
+    `Hh Mm Ss`). Adds `--seed` (Python/NumPy/torch/SB3/envs), `--config`
+    (YAML via pyyaml; TOML via `tomllib` 3.11+), `--show`, `--export-geojson`,
+    `--out-dir` (default `bike_path_figures`). Corrects stub defaults to match
+    §3.9 (`--budget` 100000, `--timesteps` 10240, `--eval-episodes` 5) and
+    `--n-envs` to `cpu_count-1` when omitted. Makes one **additive** change to
+    `training.py`: `train_model` gains optional `progress_callback` so the CLI
+    can read `.episode_rewards` to plot `training_rewards.png` (§9). Does
+    **not** import `bike_rl.optim` (still stubs); optimiser `--compare`
+    dispatch is a future optimiser plan (OPTIMIZER_SPEC §11.5/6).
   - 008: full `ruff`/`mypy`/`pytest --cov` pass at ≥80% coverage (depends on 007)
   - 009: end-to-end smoke test on a tiny bbox (depends on 008)
   - Optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
