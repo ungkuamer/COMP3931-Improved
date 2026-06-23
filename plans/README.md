@@ -18,8 +18,8 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 004  | `env.py` (MaskablePPO action masking §5.4, fixed budget-efficiency reward §5.5, full incremental state §5.6, logging §5.11, episode info §5.12) + `test_env.py`/`test_reward.py` | P1 | L | 003 | DONE |
 | 005  | `training.py` (MaskablePPO loop §3.7, SubprocVecEnv with parent-loaded graphs §6.1, timestep rounding, episode-capturing callback §5.12) + `test_training.py` | P1 | M | 004 | DONE |
 | 006  | `evaluation.py` (deterministic rollouts + best-by-reward §3.8) + `plotting.py` (headless §5.10, GeoJSON §8) + `test_evaluation.py`/`test_plotting.py` | P1 | M | 005 | DONE |
-| 007  | `cli.py` (RL pipeline end-to-end §9) + `test_cli.py` (SLURM scripts deferred — operator no longer runs on HPC) | P1 | M | 006 | TODO |
-| 008  | QA gate: ruff/mypy/pytest --cov at ≥80% | P1 | S | 007 | DONE |
+| 007  | `cli.py` (RL pipeline end-to-end §9) + `test_cli.py` (SLURM scripts deferred — operator no longer runs on HPC) | P1 | M | 006 | DONE |
+| 008  | QA gate: enforce ≥80% `bike_rl` coverage in CI (config-only — add `--cov=bike_rl --cov-report=term-missing --cov-fail-under=80` to pytest `addopts`; ruff/mypy already green after caveman skill removal) | P1 | S | 007 | DONE |
 | 009  | End-to-end headless smoke test (small city + tiny bbox); fix `load_bbox_graph` osmnx-2.x axis order | P1 | S | 008 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
@@ -92,9 +92,32 @@ REJECTED (with one-line rationale).
     can read `.episode_rewards` to plot `training_rewards.png` (§9). Does
     **not** import `bike_rl.optim` (still stubs); optimiser `--compare`
     dispatch is a future optimiser plan (OPTIMIZER_SPEC §11.5/6).
-  - 008: full `ruff`/`mypy`/`pytest --cov` pass at ≥80% coverage (depends on 007)
-  - 009: end-to-end headless smoke test (small city + tiny bbox); fix load_bbox_graph osmnx-2.x axis order
-  - 009 is DONE. `osmnx>=2.0` is now the realistic lower bound (the code already uses the osmnx 2.x API `graph_from_bbox((tuple),...)`); a future executor must not try to support osmnx 1.x.
+  - 008: enforce ≥80% `bike_rl` coverage in CI (depends on 007) — written
+    `plans/008-qa-gate-ruff-mypy-cov.md`. Config-only: at SHA `8a04ebf`, after
+    the vendored caveman skill scripts were removed from `.agents/`, `ruff
+    check .`, `ruff format --check .`, and `mypy --strict bike_rl` are already
+    green (the prior 49 ruff errors all lived in `.agents/skills/caveman-compress/scripts/*.py`,
+    now gone; `.agents/skills/improve` is `.md`-only). The single remaining
+    gap is enforcement: CI's `pytest -q` has no coverage gate. Plan adds
+    `--cov=bike_rl --cov-report=term-missing --cov-fail-under=80` to the
+    pytest `addopts` (advisor measured 89.29%, passes with margin; CI yaml
+    needs no change — `pytest -q` reads `addopts`). `bike_rl/optim/*` 0%
+    stubs deliberately *not* omitted so future optimiser plans must add tests.
+    No `bike_rl/` or `tests/` source changes.
+  - 009: end-to-end headless smoke test on a small city + tiny bbox (depends
+    on 008) — written `plans/009-end-to-end-smoke-test.md`. Recon found the
+    `--city "Otley, UK"` path already works end-to-end headless (~3m49s,
+    cached, 6 artefacts); the `--bbox` path is **broken under `osmnx 2.x`**
+    because `load_bbox_graph` passes `(N,S,E,W)` to `graph_from_bbox`, which
+    in 2.x expects `(left,bottom,right,top)` = `(W,S,E,N)` (query area inflated
+    ~13,000×, run stalls to timeout). Plan 009 fixes the axis translation
+    (plus bumps the `osmnx` lower bound `1.9` → `2.0` to match the 2.x API the
+    code already uses), updates `mock_osm.fake_bbox` and the bbox-order unit
+    test, adds `scripts/smoke_e2e.sh` (headless, off the gating CI path), and
+    runs both `--city` and `--bbox` end-to-end as §11 item 9 / §12 DoD.
+  - 009 is now **DONE**. `osmnx>=2.0` is the realistic lower bound (the code
+    already uses the osmnx 2.x API); a future executor must not try to support
+    osmnx 1.x.
   - Optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
     `optim/local_search.py`, `optim/ilp.py`, `optim/evaluate.py` — depend on
     003 (shared objective/metrics).
