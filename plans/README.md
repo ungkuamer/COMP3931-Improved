@@ -22,6 +22,8 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 008  | QA gate: enforce ≥80% `bike_rl` coverage in CI (config-only — add `--cov=bike_rl --cov-report=term-missing --cov-fail-under=80` to pytest `addopts`; ruff/mypy already green after caveman skill removal) | P1 | S | 007 | DONE |
 | 009  | End-to-end headless smoke test (small city + tiny bbox); fix `load_bbox_graph` osmnx-2.x axis order | P1 | S | 008 | DONE |
 | 010  | Implement canonical objective (`objective.py`) + `test_objective.py` (OPTIMIZER_SPEC §11.1) | P1 | M | 003 | DONE |
+| 011  | `optim/greedy.py` (GreedySolver) + `optim/budget.py` + `test_greedy.py` (OPTIMIZER_SPEC §11.2) | P1 | M | 010 | DONE |
+| 012  | `optim/local_search.py` (LocalSearchSolver: greedy seed + 1-opt/2-opt) + `test_local_search.py` (OPTIMIZER_SPEC §11.3) | P1 | M | 011 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -128,9 +130,33 @@ REJECTED (with one-line rationale).
     incremental version is a later perf plan. The RL reward is **not**
     rewired to `objective_delta` here — that is a separate, later concern
     (§3.2).
-  - Remaining optimiser plans (per OPTIMIZER_SPEC §11): `optim/greedy.py`,
-    `optim/local_search.py`, `optim/ilp.py`, `optim/evaluate.py` — depend on
-    010 (and transitively 003).
+  - 011 (greedy, OPTIMIZER_SPEC §11.2) depends on 010 (objective) and 002
+    (`Candidate`/`candidate_cost`). It implements `GreedySolver` (the
+    performance floor RL must beat, §1/§5) plus the shared `optim/budget.py`
+    (`cost` delegates to `candidate_cost`, `remaining_budget` clamps at
+    zero). Greedy is deterministic, uses the existing full-recompute
+    `objective_delta`, and takes no seed. It establishes the populated
+    `Solution` record that `local_search.py` (seeds from a greedy solution)
+    and `evaluate.py` (scores every solver into a `Solution`) will import —
+    keep `GreedySolver.__init__(cfg, weights)` / `solve(...) -> Solution`
+    and the `Solution` field set stable.
+  - 012 (local_search, OPTIMIZER_SPEC §11.3) depends on 011 (greedy, DONE —
+    `LocalSearchSolver` seeds from `GreedySolver.solve`) and 010 (objective,
+    DONE — reuses the shared `objective`). It implements the 1-opt/2-opt
+    first-improvement polish, is deterministic (no seed), and never returns a
+    solution worse than its greedy seed (only strict improvements accepted).
+    It populates `Solution` with `solver="local_search"` and `extra` carrying
+    `iterations`/`seed_objective`, which the later `evaluate.py` (§11 item 5)
+    will consume for the §10 "Greedy + LS" row. **Known upstream issue noted
+    in the plan:** `GreedySolver.solve` raises `TypeError` on exact
+    `(delta/cost, road_priority, -cost)` ties (`max(scored)` falls through to
+    comparing `Candidate`, which is not orderable). The 012 fixtures are
+    tie-free so they don't trigger it, but a follow-up one-line greedy
+    tie-break fix is recommended (out of scope for 012).
+  - Remaining optimiser plans (per OPTIMIZER_SPEC §11):
+    `optim/ilp.py`, `optim/evaluate.py` — depend on 010 (and transitively
+    003); `evaluate.py` additionally depends on 011/012 (scores every solver
+    into a `Solution`).
 
 ## Findings considered and rejected
 
