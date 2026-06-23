@@ -69,6 +69,15 @@ def test_parser_requires_city_or_bbox() -> None:
     assert exc.value.code == 2
 
 
+def test_parser_accepts_verbose() -> None:
+    """--verbose is accepted and defaults to False."""
+    parser = _build_parser()
+    args = parser.parse_args(["--city", "X", "--verbose"])
+    assert args.verbose is True
+    args_default = parser.parse_args(["--city", "X"])
+    assert args_default.verbose is False
+
+
 # ── load_config tests ──────────────────────────────────────────────
 
 

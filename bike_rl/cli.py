@@ -180,6 +180,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--config", type=str, default=None, help="Path to YAML/TOML config file")
     parser.add_argument("--out-dir", type=str, default="bike_path_figures")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable INFO logging and the training progress bar",
+    )
     return parser
 
 
@@ -231,9 +236,9 @@ def main(argv: list[str] | None = None) -> int:
     run_context = RunContext.create(Path(args.out_dir), label)
     run_context.ensure_output_dir()
 
-    # Configure logging (WARNING level to stdout, quiet during normal runs)
+    # Configure logging (INFO with --verbose; WARNING otherwise — quiet by default)
     logging.basicConfig(
-        level=logging.WARNING,
+        level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s:%(name)s:%(message)s",
         stream=sys.stdout,
     )
@@ -267,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             vec_env_cls=SubprocVecEnv,
         )
         try:
-            progress_cb = TrainingProgressCallback(args.timesteps, progress_bar=False)
+            progress_cb = TrainingProgressCallback(args.timesteps, progress_bar=args.verbose)
             model = train_model(
                 envs,
                 cfg,
