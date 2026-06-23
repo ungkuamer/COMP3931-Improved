@@ -100,10 +100,7 @@ def load_config(path: str | None, seed: int, device: str) -> Config:
             try:
                 import tomllib  # Python >= 3.11
             except ImportError:
-                print(
-                    "ERROR: TOML config requires Python 3.11+; use YAML instead.",
-                    file=sys.stderr,
-                )
+                logger.error("TOML config requires Python 3.11+; use YAML instead.")
                 sys.exit(1)
             data = tomllib.loads(p.read_text())
             # Check for [tool.bike_rl] table; fall back to top-level
