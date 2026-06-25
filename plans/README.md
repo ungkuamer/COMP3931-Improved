@@ -25,9 +25,11 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 011  | `optim/greedy.py` (GreedySolver) + `optim/budget.py` + `test_greedy.py` (OPTIMIZER_SPEC §11.2) | P1 | M | 010 | DONE |
 | 012  | `optim/local_search.py` (LocalSearchSolver: greedy seed + 1-opt/2-opt) + `test_local_search.py` (OPTIMIZER_SPEC §11.3) | P1 | M | 011 | DONE |
 | 013a | `optim/ilp.py` (ILPSolver: coverage-only CP-SAT oracle, budgeted max-coverage) + headline `test_ilp.py` (fixture, brute-force helpers, brute-force parity DoD) — see `plans/013a-ilp-solver-core.md` (OPTIMIZER_SPEC §11.4) | P1 | M | 010, 011 | DONE |
-| 013b | ILP determinism / time-limit / well-formedness tests (append to `tests/test_ilp.py`) — see `plans/013b-ilp-determinism-tests.md` | P2 | S | 013a | TODO |
+| 013b | ILP determinism / time-limit / well-formedness tests (append to `tests/test_ilp.py`) — see `plans/013b-ilp-determinism-tests.md` | P2 | S | 013a | DONE |
 | 013c | ILP engine/mode guards, `objective()` comparability, `metrics.coverage`-radius parity, edge cases (append to `tests/test_ilp.py`) — see `plans/013c-ilp-guards-and-parity.md` | P2 | S | 013a, 013b | DONE |
 | 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
+| 015  | `optim/evaluate.py` (`evaluate_solver`, `evaluate_rl_policy`, `run_comparison`, `format_comparison_table`, `Instance`) + `tests/test_optim_evaluate.py` (OPTIMIZER_SPEC §11.5) | P1 | M | 010, 011, 012, 013a | DONE |
+| 016  | Run the full comparison on one small city → §10 table → sanity-check greedy ≥ RL (OPTIMIZER_SPEC §11.6) — `scripts/run_comparison.py` + `bike_path_figures/compare_otley_uk_*/FINDINGS.md` | P1 | M | 015 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -219,12 +221,43 @@ REJECTED (with one-line rationale).
     resolved, so an ILP-vs-greedy comparison on the `max_coverage_instance`
     fixture (which deliberately creates greedy ties) is now safe to add in a
     future plan — still out of scope for the 013a/b/c test family.
-  - Remaining optimiser plan (per OPTIMIZER_SPEC §11):
-    `optim/evaluate.py` + `evaluate_rl_policy` — depends on 010/011/012/**013a**
-    (013b/013c are test-only and land alongside or after; `evaluate.py` only
-    needs the solver shipped by 013a, plus its well-formedness/parity contracts
-    pinned by 013b/013c). Scores every solver, including the ILP row, into a
-    shared `Solution`.
+  - 015 (`optim/evaluate.py`, OPTIMIZER_SPEC §11.5) is **DONE**. It depends on 010/011/012/013a
+    (all DONE). It replaces the `optim/evaluate.py` stub with the shared evaluation
+    harness: `evaluate_solver` (runs a solver and re-scores with the shared
+    `objective` — §8 comparability), `evaluate_rl_policy` (deterministic rollout
+    of a trained `MaskablePPO`, scored by the shared `objective`, never the RL
+    reward — §3.2/§8), `run_comparison` (runs the full roster + optional RL row),
+    `format_comparison_table` (renders the §10 Markdown table with optimality
+    gap vs the OPTIMAL ILP row when present, else vs best, plus a coverage-only
+    footnote), `Instance` / `build_instance_from_graphs` (derive candidates once
+    so the optimisers and the RL env see the same set — the §8 fairness
+    guarantee). `tests/test_optim_evaluate.py` pins §8 parity (identical edge
+    sets → identical objective regardless of solver), RL-rollout comparability,
+    the full-roster table, and the `walk_graph`-missing guard. Also landed two
+    robustness fixes uncovered by the comparison: `ILPSolver` no longer raises
+    `KeyError` on walk-graph candidate endpoints not present in the bike graph
+    (treats them as coord-less, matching `metrics.coverage`), and
+    `LocalSearchSolver` now respects `time_limit_s` *inside* its 1-opt/2-opt
+    inner loops (previously a single iteration could overrun by 10×).
+  - 016 (run the comparison on a small city, OPTIMIZER_SPEC §11.6) is **DONE**.
+    `scripts/run_comparison.py` is the single-command §10-table runner (§12
+    DoD). On Otley, UK (132 candidates, budget 200k) the headline result is
+    **RL (0.1004) > greedy (0.0584)** — greedy does *not* clear RL here.
+    Diagnosis (in `bike_path_figures/compare_otley_uk_*/FINDINGS.md`): greedy
+    stalls at 1 edge because the default weighted objective
+    (`0.4·conn + 0.4·cov − 0.2·frag`) is **non-monotone** (the fragmentation
+    penalty makes a 2nd isolated edge decrease the objective mid-construction,
+    even though a 35–112-edge solution scores higher) — the §5 submodularity
+    caveat. Coverage-only greedy confirms the machinery is correct: it reaches
+    **99.72% of the ILP optimum (0.28% gap)** on the monotone submodular
+    coverage objective. RL wins the weighted run because its shaped reward
+    (continuity/isolation/budget-efficiency) escapes the greedy local optimum;
+    scored by the shared objective it lands between greedy and the ILP ceiling.
+    Recommended follow-ups (out of scope): make the weighted objective
+    monotone (keep fragmentation as reward shaping only, per §3.2), land the
+    incremental `objective_delta` (plan 010 deferred the full-recompute — the
+    coverage-only greedy run took 9m41s from re-`objective`-ing per candidate),
+    and the full-objective ILP (§7) for a weighted ceiling.
 
 ## Findings considered and rejected
 

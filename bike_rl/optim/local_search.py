@@ -89,6 +89,8 @@ class LocalSearchSolver:
                 freed = cost(e_out, self.cfg)
                 head = budget - (spent - freed)
                 for e_in in non_chosen:
+                    if (time.perf_counter() - start) >= self.time_limit_s:
+                        break
                     if cost(e_in, self.cfg) <= head + eps:
                         new_s = [e for e in S if e is not e_out]
                         new_s.append(e_in)
@@ -97,7 +99,7 @@ class LocalSearchSolver:
                             spent = spent - freed + cost(e_in, self.cfg)
                             improved = True
                             break
-                if improved:
+                if improved or (time.perf_counter() - start) >= self.time_limit_s:
                     break
             if improved:
                 continue
@@ -106,6 +108,8 @@ class LocalSearchSolver:
                 freed = cost(e_out, self.cfg)
                 head = budget - (spent - freed)
                 for e1, e2 in itertools.combinations(non_chosen, 2):
+                    if (time.perf_counter() - start) >= self.time_limit_s:
+                        break
                     if cost(e1, self.cfg) + cost(e2, self.cfg) <= head + eps:
                         new_s = [e for e in S if e is not e_out]
                         new_s.append(e1)
@@ -115,7 +119,7 @@ class LocalSearchSolver:
                             spent = spent - freed + cost(e1, self.cfg) + cost(e2, self.cfg)
                             improved = True
                             break
-                if improved:
+                if improved or (time.perf_counter() - start) >= self.time_limit_s:
                     break
         return Solution(
             edges=list(S),

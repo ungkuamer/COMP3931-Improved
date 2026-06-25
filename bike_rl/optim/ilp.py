@@ -35,11 +35,26 @@ _STATUS_NAMES = {
 _COST_SCALE = 1000.0
 
 
+def _coords(graph: _NXGraph, n: int | str) -> dict[str, Any]:
+    """Return ``graph.nodes[n]`` or ``{}`` if ``n`` is not a node of ``graph``.
+
+    A coord-less dict makes :func:`_metres_between` return ``inf`` (never
+    covers), mirroring :func:`bike_rl.metrics.coverage` on coord-less added
+    endpoints. Lets the ILP handle walk-graph candidate endpoints that are
+    not bike-graph nodes without raising ``KeyError``.
+    """
+    return graph.nodes[n] if n in graph else {}
+
+
 def _reachable_count(graph: _NXGraph, chosen: list[Candidate], cfg: Config) -> int:
     """Number of graph nodes within cfg.coverage_radius_m of any bike-lane endpoint.
 
     Mirrors the radius branch of bike_rl.metrics.coverage; uses the SAME
-    _metres_between so it cannot drift from coverage().
+    _metres_between so it cannot drift from coverage(). Candidate endpoints
+    that are not nodes of ``graph`` (common when the walk and bike graphs have
+    disjoint node sets) are treated as having no coordinates — matching
+    ``apply_added_edges`` + ``coverage()``, where such endpoints are added as
+    coord-less nodes and ``_metres_between`` returns ``inf`` (never covers).
     """
     bike: set[int | str] = {
         n for u, v, d in graph.edges(data=True) if d.get("bike_lane") == "yes" for n in (u, v)
@@ -50,7 +65,7 @@ def _reachable_count(graph: _NXGraph, chosen: list[Candidate], cfg: Config) -> i
     covered = 0
     for _n, ndata in graph.nodes(data=True):
         for bn in bike:
-            if _metres_between(ndata, graph.nodes[bn]) <= cfg.coverage_radius_m:
+            if _metres_between(ndata, _coords(graph, bn)) <= cfg.coverage_radius_m:
                 covered += 1
                 break
     return covered
@@ -179,11 +194,13 @@ class ILPSolver:
                 if _metres_between(ndata, graph.nodes[bn]) <= self.cfg.coverage_radius_m:
                     free[idx_n] = True
                     break
-            # Check which candidates could cover this node
+            # Check which candidates could cover this node. Candidate
+            # endpoints not in the bike graph have no coords → inf distance
+            # (matching coverage() on coord-less added endpoints).
             for j, c in enumerate(candidates):
                 if (
-                    _metres_between(ndata, graph.nodes[c.u]) <= self.cfg.coverage_radius_m
-                    or _metres_between(ndata, graph.nodes[c.v]) <= self.cfg.coverage_radius_m
+                    _metres_between(ndata, _coords(graph, c.u)) <= self.cfg.coverage_radius_m
+                    or _metres_between(ndata, _coords(graph, c.v)) <= self.cfg.coverage_radius_m
                 ):
                     near[idx_n].append(j)
 
