@@ -81,18 +81,27 @@ class GreedySolver:
         remaining = list(candidates)
         spent = 0.0
         while remaining:
-            scored: list[tuple[float, int, float, Candidate]] = []
-            for e in remaining:
+            # Score = (gain-per-cost, road_priority, -cost, -index, edge).
+            # The first three keys are the documented OPTIMIZER_SPEC §5
+            # tie-break. The final ``-index`` key is a stable, always-comparable
+            # tie-breaker: ``Candidate`` is a frozen dataclass without
+            # ``order=True`` (identity = (u, v, length, road_priority), plan
+            # 002), so without it ``max`` would compare ``Candidate`` objects
+            # and raise ``TypeError`` on exact score ties. ``-index`` makes
+            # the earliest candidate in the (current) remaining order win a
+            # full tie; it never reorders non-tied candidates.
+            scored: list[tuple[float, int, float, int, Candidate]] = []
+            for i, e in enumerate(remaining):
                 c = cost(e, self.cfg)
                 if spent + c > budget:
                     continue
                 delta = objective_delta(graph, S, e, self.weights, self.cfg)
                 if delta <= 0.0:
                     continue
-                scored.append((delta / c, e.road_priority, -c, e))
+                scored.append((delta / c, e.road_priority, -c, -i, e))
             if not scored:
                 break
-            _, _, _, best = max(scored)
+            _, _, _, _, best = max(scored)
             S.append(best)
             spent += cost(best, self.cfg)
             remaining.remove(best)
