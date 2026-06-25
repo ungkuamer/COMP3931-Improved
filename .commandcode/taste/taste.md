@@ -7,4 +7,5 @@
 
 # Git
 - When the user explicitly asks to merge a branch, merge it for them despite any default "never merge" policy. Confidence: 0.85
+- After merging a branch, push to remote and clean up the merged branch locally without being separately prompted. Confidence: 0.70
 
