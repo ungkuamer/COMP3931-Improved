@@ -29,7 +29,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 013c | ILP engine/mode guards, `objective()` comparability, `metrics.coverage`-radius parity, edge cases (append to `tests/test_ilp.py`) — see `plans/013c-ilp-guards-and-parity.md` | P2 | S | 013a, 013b | DONE |
 | 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
 | 015  | `optim/evaluate.py` (`evaluate_solver`, `evaluate_rl_policy`, `run_comparison`, `format_comparison_table`, `Instance`) + `tests/test_optim_evaluate.py` (OPTIMIZER_SPEC §11.5) | P1 | M | 010, 011, 012, 013a | DONE |
-| 016  | Run the full comparison on one small city → §10 table → sanity-check greedy ≥ RL (OPTIMIZER_SPEC §11.6) — `scripts/run_comparison.py` + `bike_path_figures/compare_otley_uk_*/FINDINGS.md` | P1 | M | 015 | DONE |
+| 016  | Run the full comparison on one small city → §10 table → sanity-check greedy ≥ RL (OPTIMIZER_SPEC §11.6) — `scripts/run_comparison.py` + top-level `FINDINGS.md` | P1 | M | 015 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -243,7 +243,7 @@ REJECTED (with one-line rationale).
     `scripts/run_comparison.py` is the single-command §10-table runner (§12
     DoD). On Otley, UK (132 candidates, budget 200k) the headline result is
     **RL (0.1004) > greedy (0.0584)** — greedy does *not* clear RL here.
-    Diagnosis (in `bike_path_figures/compare_otley_uk_*/FINDINGS.md`): greedy
+    Diagnosis (in top-level `FINDINGS.md`): greedy
     stalls at 1 edge because the default weighted objective
     (`0.4·conn + 0.4·cov − 0.2·frag`) is **non-monotone** (the fragmentation
     penalty makes a 2nd isolated edge decrease the objective mid-construction,
