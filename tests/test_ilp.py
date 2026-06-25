@@ -8,6 +8,7 @@ edge-case tests.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 
 import networkx as nx
@@ -15,7 +16,8 @@ import pytest
 
 from bike_rl.candidates import Candidate, candidate_cost
 from bike_rl.config import Config
-from bike_rl.objective import ObjectiveWeights
+from bike_rl.metrics import _metres_between, coverage
+from bike_rl.objective import ObjectiveWeights, objective
 from bike_rl.optim.greedy import Solution
 from bike_rl.optim.ilp import ILPSolver, _reachable_count
 
@@ -274,3 +276,99 @@ class TestILPSolver:
         assert len(endpoints) == len(set(endpoints)), (
             "chosen edges must be pairwise endpoint-disjoint"
         )
+
+    # ── 013c: guards, parity, edge cases ────────────────────────────────
+
+    def test_unsupported_engine_raises(
+        self,
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """ILPSolver raises ValueError for unsupported engine."""
+        with pytest.raises(ValueError):
+            ILPSolver(default_cfg, default_weights, solver="gurobi")
+        # these must NOT raise:
+        ILPSolver(default_cfg, default_weights, solver="ortools")
+        ILPSolver(default_cfg, default_weights, solver=None)
+
+    def test_non_radius_mode_raises(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """ILPSolver.solve raises NotImplementedError for non-radius coverage_mode."""
+        graph, candidates = max_coverage_instance
+        cfg = dataclasses.replace(default_cfg, coverage_mode="component")
+        with pytest.raises(NotImplementedError):
+            ILPSolver(cfg, default_weights).solve(graph, candidates, 1800.0)
+
+    def test_empty_candidates_returns_empty(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Empty candidate list returns a well-formed empty Solution."""
+        graph, _candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights).solve(graph, [], 1e9)
+        assert sol.edges == []
+        assert sol.extra["n_candidates"] == 0
+        assert sol.extra["status"] == "OPTIMAL"
+        assert sol.objective == pytest.approx(objective(graph, [], default_weights, default_cfg))
+
+    def test_empty_when_no_affordable_edge(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Zero budget returns well-formed empty Solution (base coverage only)."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 0.0)
+        assert sol.edges == []
+        assert sol.spent == 0.0
+        assert sol.extra["surrogate_count"] == 3
+        assert sol.extra["status"] == "OPTIMAL"
+
+    def test_objective_consistency_with_shared_scorer(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        cov_only_weights: ObjectiveWeights,
+    ) -> None:
+        """§8 comparability: sol.objective == objective(graph, sol.edges, ...)."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, cov_only_weights).solve(graph, candidates, 1800.0)
+        assert sol.objective == pytest.approx(
+            objective(graph, sol.edges, cov_only_weights, default_cfg)
+        )
+
+    def test_surrogate_matches_metrics_coverage_ratio(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """ILP surrogate matches independent coverage recompute (radius branch)."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1800.0)
+        # Independent recompute of the reachable fraction (radius branch of coverage()).
+        chosen = sol.edges
+        bike: set[int | str] = {
+            n for u, v, d in graph.edges(data=True) if d.get("bike_lane") == "yes" for n in (u, v)
+        }
+        for e in chosen:
+            bike.add(e.u)
+            bike.add(e.v)
+        covered = 0
+        for _n, ndata in graph.nodes(data=True):
+            for bn in bike:
+                if _metres_between(ndata, graph.nodes[bn]) <= default_cfg.coverage_radius_m:
+                    covered += 1
+                    break
+        total = graph.number_of_nodes()
+        assert sol.extra["surrogate"] == pytest.approx(covered / total, abs=1e-9)
+        # Adding edges never decreases reachable population.
+        base_fraction = coverage(graph, default_cfg)
+        assert sol.extra["surrogate"] >= base_fraction - 1e-9
