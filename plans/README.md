@@ -25,7 +25,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 011  | `optim/greedy.py` (GreedySolver) + `optim/budget.py` + `test_greedy.py` (OPTIMIZER_SPEC §11.2) | P1 | M | 010 | DONE |
 | 012  | `optim/local_search.py` (LocalSearchSolver: greedy seed + 1-opt/2-opt) + `test_local_search.py` (OPTIMIZER_SPEC §11.3) | P1 | M | 011 | DONE |
 | 013  | `optim/ilp.py` (ILPSolver: coverage-only CP-SAT oracle, budgeted max-coverage) + `test_ilp.py` (OPTIMIZER_SPEC §11.4) | P1 | M | 010, 011 | TODO |
-| 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression | P1 | S | 011 | TODO |
+| 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
