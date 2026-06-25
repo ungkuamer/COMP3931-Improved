@@ -24,7 +24,9 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 010  | Implement canonical objective (`objective.py`) + `test_objective.py` (OPTIMIZER_SPEC §11.1) | P1 | M | 003 | DONE |
 | 011  | `optim/greedy.py` (GreedySolver) + `optim/budget.py` + `test_greedy.py` (OPTIMIZER_SPEC §11.2) | P1 | M | 010 | DONE |
 | 012  | `optim/local_search.py` (LocalSearchSolver: greedy seed + 1-opt/2-opt) + `test_local_search.py` (OPTIMIZER_SPEC §11.3) | P1 | M | 011 | DONE |
-| 013  | `optim/ilp.py` (ILPSolver: coverage-only CP-SAT oracle, budgeted max-coverage) + `test_ilp.py` (OPTIMIZER_SPEC §11.4) | P1 | M | 010, 011 | TODO |
+| 013a | `optim/ilp.py` (ILPSolver: coverage-only CP-SAT oracle, budgeted max-coverage) + headline `test_ilp.py` (fixture, brute-force helpers, brute-force parity DoD) — see `plans/013a-ilp-solver-core.md` (OPTIMIZER_SPEC §11.4) | P1 | M | 010, 011 | DONE |
+| 013b | ILP determinism / time-limit / well-formedness tests (append to `tests/test_ilp.py`) — see `plans/013b-ilp-determinism-tests.md` | P2 | S | 013a | TODO |
+| 013c | ILP engine/mode guards, `objective()` comparability, `metrics.coverage`-radius parity, edge cases (append to `tests/test_ilp.py`) — see `plans/013c-ilp-guards-and-parity.md` | P2 | S | 013a, 013b | TODO |
 | 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
@@ -155,25 +157,53 @@ REJECTED (with one-line rationale).
     comparing `Candidate`, which is not orderable). The 012 fixtures are
     tie-free so they don't trigger it, but a follow-up one-line greedy
     tie-break fix is recommended (out of scope for 012).
-  - 013 (ILP, OPTIMIZER_SPEC §11.4) depends on 010 (`objective`/`ObjectiveWeights`/`Edge`)
-    and 011 (`Solution`, `cost`). It replaces the `optim/ilp.py` stub with an
-    OR-Tools CP-SAT **coverage-only oracle**: budgeted maximum-coverage that
-    maximises the reachable-node count (the radius branch of
-    `metrics.coverage`), integer-scaled budget constraint, deterministic
-    (`num_search_workers=1` + a lex weighted objective). It reuses `Solution`
-    unchanged and reports `Solution.objective = objective(graph, S, weights,
-    cfg)` (§8 comparability); the optimality guarantee is over the coverage
-    surrogate in `extra`. The full-objective ILP (connectivity via flow/Steiner,
-    §7 "Full-objective ILP") and `coverage_mode=="component"` linearisation are
-    **deferred** to a follow-up (the solver raises `NotImplementedError` for
-    non-radius modes). Only `ortools` engine; PuLP/gurobipy deferred. No
-    `Config`/`metrics`/`greedy` changes. `test_ilp.py` includes a clean
-    non-degenerate max-coverage fixture (the `tiny_*` fixtures saturate
-    coverage at 1.0) and brute-force parity on ≤12 candidates (§9/§12 DoD).
-    **Caveat:** the fixture deliberately creates greedy `max(scored)` ties, so
-    it must NOT be used for an ILP-vs-greedy comparison test (greedy's known
-    `Candidate`-not-orderable `TypeError`, plan 012) — tests compare ILP vs
-    brute force only.
+  - **013 family (ILP, OPTIMIZER_SPEC §11.4)** — the former monolithic
+    `plans/013-ilp-and-tests.md` was split into three smaller plans because it
+    bundled the solver, the shared fixture/helpers, and 14 tests covering four
+    distinct concerns. Execute 013a first; 013b and 013c depend on it.
+    - **013a** (`optim/ilp.py` + headline `test_ilp.py`) depends on 010
+      (`objective`/`ObjectiveWeights`/`Edge`) and 011 (`Solution`, `cost`).
+      It replaces the `optim/ilp.py` stub with an OR-Tools CP-SAT
+      **coverage-only oracle**: budgeted maximum-coverage that maximises the
+      reachable-node count (the radius branch of `metrics.coverage`),
+      integer-scaled budget constraint, deterministic (`num_search_workers=1` +
+      a lex weighted objective). It reuses `Solution` unchanged and reports
+      `Solution.objective = objective(graph, S, weights, cfg)` (§8
+      comparability); the optimality guarantee is over the coverage surrogate in
+      `extra`. The module-local `_reachable_count` is the **single source of
+      truth** imported by the test (no duplicate formula). Only `ortools`
+      engine; PuLP/gurobipy deferred. No `Config`/`metrics`/`greedy` changes.
+      This plan lands the shared `max_coverage_instance` fixture (8 candidates,
+      non-degenerate — the `tiny_*` fixtures saturate coverage at 1.0), the
+      `_brute_best` helper, the three weight fixtures, and the **headline
+      tests**: brute-force parity on the 4 budgets (§9/§12 DoD gate, "ILP matches
+      brute force on ≤12 candidates"), budget-respect, and OPTIMAL/zero-gap.
+    - **013b** (determinism / time-limit / well-formedness tests) depends on
+      013a and only **appends** to `tests/test_ilp.py` (imports the fixture +
+      helpers 013a defined — must NOT redefine them). Adds:
+      `test_deterministic_across_runs`, `test_respects_time_limit_zero`,
+      `test_solution_record_is_well_formed`, `test_does_not_mutate_input_candidates`,
+      `test_disjoint_optimum_at_budget_1200`. Pins the non-parity contract
+      `evaluate.py` will silently rely on. Edits `ilp.py` ONLY if a test
+      surfaces a real regression (e.g. raising the lex tie-break multiplier);
+      relaxing determinism is forbidden.
+    - **013c** (guards / parity / edge cases) depends on 013a (and 013b for a
+      green file) and only **appends** to `tests/test_ilp.py`. Adds:
+      `test_unsupported_engine_raises`, `test_non_radius_mode_raises`,
+      `test_objective_consistency_with_shared_scorer` (the §8 comparability
+      guarantee `evaluate.py` relies on),
+      `test_surrogate_matches_metrics_coverage_ratio` (pins the ILP surrogate
+      to `metrics.coverage`'s radius branch via `_metres_between`),
+      `test_empty_candidates_returns_empty`, `test_empty_when_no_affordable_edge`.
+      The `coverage_mode != "radius"` guard raises loudly (`NotImplementedError`);
+      the full-objective ILP (connectivity via flow/Steiner, §7 "Full-objective
+      ILP") and `coverage_mode=="component"` linearisation are **deferred** to a
+      follow-up (the guard tests are the signal that removal is needed when it
+      lands). Together 013a/b/c ship the original monolithic 013's full 14-test
+      target. **Former caveat (now resolved by 014):** the `max_coverage_instance`
+      fixture deliberately creates greedy `max(scored)` ties; once 014 (greedy
+      tie-break fix) is DONE an ILP-vs-greedy comparison test on this fixture is
+      safe to add in a future plan — still out of scope for 013a/b/c.
   - 014 (greedy tie-break fix, OPTIMIZER_SPEC §5 robustness) depends on 011
     (greedy, DONE). It fixes the `TypeError: '>' not supported between
     instances of 'Candidate' and 'Candidate'` that `GreedySolver.solve` raises
@@ -183,14 +213,18 @@ REJECTED (with one-line rationale).
     (`-index`, earliest candidate in input order wins a full tie) appended to
     the score tuple; it does not change the documented priority or touch
     `Candidate`. `LocalSearchSolver` (seeds from greedy) inherits the fix for
-    free. This resolves the "known upstream caveat" plans 012/013 deferred.
-    Effort S, risk LOW: there is a verified reproduction at `bc58ad2` and a
-    ready 4-test regression class. Recommended to land before 013 so the
-    ILP-vs-greedy comparison forbidden by plan 013's maintenance notes can
-    later be revisited.
+    free. This resolves the "known upstream caveat" plans 012 / the former 013
+    deferred. Effort S, risk LOW: verified reproduction at `bc58ad2` and a
+    ready 4-test regression class. It is now DONE; the former caveat is
+    resolved, so an ILP-vs-greedy comparison on the `max_coverage_instance`
+    fixture (which deliberately creates greedy ties) is now safe to add in a
+    future plan — still out of scope for the 013a/b/c test family.
   - Remaining optimiser plan (per OPTIMIZER_SPEC §11):
-    `optim/evaluate.py` + `evaluate_rl_policy` — depends on 010/011/012/013
-    (scores every solver, including the ILP row, into a shared `Solution`).
+    `optim/evaluate.py` + `evaluate_rl_policy` — depends on 010/011/012/**013a**
+    (013b/013c are test-only and land alongside or after; `evaluate.py` only
+    needs the solver shipped by 013a, plus its well-formedness/parity contracts
+    pinned by 013b/013c). Scores every solver, including the ILP row, into a
+    shared `Solution`.
 
 ## Findings considered and rejected
 

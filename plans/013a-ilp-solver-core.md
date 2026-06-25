@@ -1,4 +1,4 @@
-# Plan 013: Implement the ILP coverage-only oracle (`optim/ilp.py`) + `test_ilp.py`
+# Plan 013a: Implement the ILP coverage-only oracle (`optim/ilp.py`) + headline tests
 
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
@@ -10,6 +10,17 @@
 > If any in-scope file changed since this plan was written, compare the
 > "Current state" excerpts below against the live code before proceeding; on a
 > mismatch, treat it as a STOP condition.
+
+> **Split context**: This plan is the first of three that together replace
+> the former monolithic `plans/013-ilp-and-tests.md`:
+> - **013a (this)** — the `ILPSolver` core + the shared `max_coverage_instance`
+>   fixture + brute-force helpers + the headline DoD tests (brute-force
+>   parity, budget respect, OPTIMAL/zero-gap).
+> - **013b** — determinism / time-limit / well-formedness tests (depends on
+>   013a: imports the fixture and helpers from `tests/test_ilp.py`).
+> - **013c** — guards / parity / edge cases (depends on 013a; same imports).
+> The two follow-ups MUST import the fixture/helpers from the file this plan
+> creates — they do not redefine them.
 
 ## Status
 
@@ -34,6 +45,12 @@ machinery so its result row is directly comparable to the greedy / local-search
 / (later) RL rows (§8). The full-objective ILP (connectivity via flow/Steiner,
 §7 "Full-objective ILP") is intentionally **deferred** to a later plan — this
 one ships the scalable exact oracle the comparison table needs today.
+
+This plan (013a) ships the working solver and the single most important test
+class — brute-force parity on a clean small instance — so the oracle is
+*provable* before any of the follow-up robustness/edge-case tests in 013b/013c.
+Those follow-ups import the fixture/helpers this plan defines; they do not
+re-establish correctness.
 
 ## Current state
 
@@ -109,21 +126,22 @@ Run all commands from the repo root with the venv active.
 
 ## Scope
 
-**In scope** (the only files you should modify):
+**In scope** (the only files you should modify in this plan):
 - `bike_rl/optim/ilp.py` — replace stub with the full `ILPSolver`.
-- `tests/test_ilp.py` — create new test file.
+- `tests/test_ilp.py` — create new test file with the fixture, helpers, and headline tests (Step 1 + Step 3's headline-test subset).
 
 **Out of scope** (do NOT touch, even though they look related):
 - `bike_rl/optim/greedy.py`, `local_search.py`, `budget.py`, `evaluate.py` — other solvers / harness; `evaluate.py` is the *next* optimiser plan (§11 item 5).
 - `bike_rl/objective.py`, `bike_rl/metrics.py`, `bike_rl/config.py`, `bike_rl/candidates.py` — reuse only; this plan adds no `Config` field and no metric.
-- The **full-objective ILP** (connectivity via flow/Steiner auxiliary vars, §7 "Full-objective ILP", and the `coverage_mode == "component"` linearisation, which needs connected-component auxiliary variables) — **deferred** to a follow-up plan. This plan raises a clear, documented error for `coverage_mode != "radius"` rather than silently approximating.
+- The **full-objective ILP** (connectivity via flow/Steiner aux vars, §7 "Full-objective ILP", and the `coverage_mode == "component"` linearisation, which needs connected-component auxiliary variables) — **deferred** to a follow-up plan. This plan raises a clear, documented error for `coverage_mode != "radius"` rather than silently approximating.
 - PuLP/CBC / gurobipy engine support — deferred. Only OR-Tools CP-SAT here.
 - Filtering candidates down to `cfg.max_candidates_for_ilp` — that threshold is enforced by the future `evaluate.py` harness, **not** by `ILPSolver`. `ILPSolver` solves exactly what it is handed.
 - `__init__.py` re-exports — leave the existing `optim/__init__.py` alone.
+- The determinism / time-limit / well-formedness tests (plan 013b) and the guard / parity / edge-case tests (plan 013c). This plan lands only the headline tests needed to *prove* the oracle against brute force.
 
 ## Git workflow
 
-- Branch: `advisor/013-ilp-and-tests` (matches the `advisor/NNN-<slug>` convention used by prior plans).
+- Branch: `advisor/013a-ilp-solver-core` (matches the `advisor/NNN-<slug>` convention used by prior plans).
 - Commit per logical unit (e.g. one commit for the solver, one for the tests). Message style: conventional commits — e.g. `feat(optim): add ILP coverage-only oracle (OPTIMIZER_SPEC §7)` and `test(optim): add test_ilp.py brute-force parity`. See `git log --oneline -10` for the repo's existing style.
 - Do NOT push or open a PR unless the operator instructed it.
 
@@ -132,12 +150,10 @@ Run all commands from the repo root with the venv active.
 ### Step 1: Define the brute-force fixture in `tests/test_ilp.py` (tests first)
 
 Create `tests/test_ilp.py`. Start with the module docstring, imports, the local
-`_edge(...)` helper, the `default_cfg` / `default_weights` fixtures, and a
-`max_coverage_instance` fixture (a function-scoped `pytest.fixture` returning
-`(graph, candidates, budget_by_case)`). Use **coverage-only weights**
-`ObjectiveWeights(connectivity=0.0, coverage=1.0, fragmentation=0.0)` only where
-a test needs `objective()`-consistency, and the default `ObjectiveWeights()`
-elsewhere (the ILP optimises the surrogate regardless of weights).
+`_edge(...)` helper, the `default_cfg` / `default_weights` / `cov_only_weights`
+fixtures, and `max_coverage_instance` (a function-scoped `pytest.fixture`
+returning `(graph, candidates)`). The `cov_only_weights` fixture is defined
+here so 013c can import it; 013a does not itself use it.
 
 The fixture (coordinates in degrees; far nodes are **0.005° apart ≈ 556 m >
 300 m radius**, so radius never bleeds between them — each candidate edge covers
@@ -146,18 +162,15 @@ instance):
 
 ```python
 import itertools
-import math
 
 import networkx as nx
 import pytest
 
 from bike_rl.candidates import Candidate, candidate_cost
 from bike_rl.config import Config
-from bike_rl.metrics import _metres_between, coverage
-from bike_rl.objective import ObjectiveWeights, objective
-from bike_rl.optim.budget import cost
-from bike_rl.optim.greedy import Solution
-from bike_rl.optim.ilp import ILPSolver
+from bike_rl.metrics import _metres_between
+from bike_rl.objective import ObjectiveWeights
+from bike_rl.optim.ilp import ILPSolver, _reachable_count
 
 
 def _edge(u: int | str, v: int | str, length: float, road_priority: int = 1) -> Candidate:
@@ -235,27 +248,8 @@ def max_coverage_instance() -> tuple[nx.MultiDiGraph, list[Candidate]]:
     return g, candidates
 ```
 
-Also add a brute-force helper in the test module for parity:
+Also add the brute-force helper in the test module (parity reference):
 ```python
-def _reachable_count(graph: nx.MultiDiGraph, chosen: list[Candidate], cfg: Config) -> int:
-    """Number of graph nodes within cfg.coverage_radius_m of any bike-lane endpoint.
-
-    Mirrors the radius branch of bike_rl.metrics.coverage; uses the SAME
-    _metres_between so it cannot drift from coverage().
-    """
-    bike = {n for u, v, d in graph.edges(data=True)
-            if d.get("bike_lane") == "yes" for n in (u, v)}
-    for e in chosen:
-        bike.add(e.u); bike.add(e.v)
-    covered = 0
-    for n, ndata in graph.nodes(data=True):
-        for bn in bike:
-            if _metres_between(ndata, graph.nodes[bn]) <= cfg.coverage_radius_m:
-                covered += 1
-                break
-    return covered
-
-
 def _brute_best(graph, candidates, cfg, budget):
     """Return (best_reachable_count, best_chosen_set) over all affordable subsets."""
     best = -1
@@ -271,6 +265,10 @@ def _brute_best(graph, candidates, cfg, budget):
                 best_set = list(S)
     return best, best_set
 ```
+
+The test module imports `_reachable_count` from `bike_rl.optim.ilp` (the single
+source of truth defined in Step 2) — do NOT re-define it in the test. This
+guarantees the parity test cannot drift from the solver's own accounting.
 
 **Verify**: `python -c "import tests.test_ilp as t; print('ok')"` → no import
 error (this requires Step 2 to exist; if you prefer, write Step 2 first and
@@ -292,6 +290,7 @@ import networkx as nx
 from ortools.sat.python import cp_model
 
 from bike_rl.candidates import Candidate
+from bike_rl.metrics import _metres_between
 from bike_rl.objective import ObjectiveWeights, objective
 from bike_rl.optim.budget import cost
 from bike_rl.optim.greedy import Solution
@@ -387,28 +386,29 @@ class ILPSolver:
             ``n_selected``, ``solver_engine``, ``coverage_mode``, and
             ``opt_gap`` (0.0 when status is OPTIMAL).
         """
-        ...  # see Step 2 body below
+        ...  # see body below
 ```
 
 Body of `solve` (implement exactly this logic):
 
 1. Record `start = time.perf_counter()`.
 2. If `self.cfg.coverage_mode != "radius"`: raise `NotImplementedError` with a message naming the mode and pointing at the deferred full-objective ILP (do NOT silently fall back).
-3. `total = graph.number_of_nodes()`. If `total == 0` or `not candidates` or `budget <= 0`: return an empty `Solution` (`solver="ilp"`, `extra` with `status="OPTIMAL"`, `objective_kind="coverage_only"`, `surrogate=0.0` if `total==0` else `base_reachable/total`, `surrogate_count=base_reachable`, `n_candidates=len(candidates)`, `n_selected=0`, `solver_engine="ortools"`, `coverage_mode=self.cfg.coverage_mode`, `opt_gap=0.0`). Compute `base_reachable` once via the same helper used in the model (Step 2.4).
+3. `total = graph.number_of_nodes()`. Compute `base_reachable` once via `_reachable_count(graph, [], self.cfg)` (the helper defined in Step 2.9 below). If `total == 0` or `not candidates` or `budget <= 0`: return an empty `Solution` (`solver="ilp"`, `objective=objective(graph, [], self.weights, self.cfg)`, `spent=0.0`, `runtime_s=time.perf_counter()-start`, `extra` with `status="OPTIMAL"`, `objective_kind="coverage_only"`, `surrogate=(base_reachable/total if total else 0.0)`, `surrogate_count=base_reachable`, `n_candidates=len(candidates)`, `n_selected=0`, `solver_engine="ortools"`, `coverage_mode=self.cfg.coverage_mode`, `opt_gap=0.0`).
 4. Precompute coverage relation (the linearisable radius structure):
    - `base_bike = {n for u, v, d in graph.edges(data=True) if d.get("bike_lane") == "yes" for n in (u, v)}`.
    - For each node `n` in `graph.nodes(data=True)`: `free = any(_metres_between(ndata, graph.nodes[bn]) <= self.cfg.coverage_radius_m for bn in base_bike)`.
-   - For each node `n` and each candidate index `j`: `covers` = `_metres_between(ndata, graph.nodes[c.u]) <= R` OR `_metres_between(ndata, graph.nodes[c.v]) <= R`. Collect `near[n] = [j, ...]`. (Import `_metres_between`: `from bike_rl.metrics import _metres_between`.)
+   - For each node `n` and each candidate index `j`: `covers` = `_metres_between(ndata, graph.nodes[c.u]) <= R` OR `_metres_between(ndata, graph.nodes[c.v]) <= R`. Collect `near[n] = [j, ...]`. Keep an index dict `node_idx` mapping each node id to its `y` var if you prefer; choose ONE approach and stay consistent.
 5. Build the CP-SAT model:
    - `model = cp_model.CpModel()`
    - `x = [model.NewBoolVar(f"x{j}") for j in range(len(candidates))]`
-   - `y = {n: model.NewBoolVar(f"y{n}") for n in graph.nodes()}` (use the node id; if node ids are not strings, format safely — `f"y{repr(n)}"` or keep an index dict `node_idx`).
+   - `y = {n: model.NewBoolVar(f"y{idx}") for idx, n in enumerate(graph.nodes())}` (use a numeric index for the var name; map back via `node_idx`).
    - Coverage constraints (max-coverage LP):
      - for a node `n` with `free == True`: `model.Add(y[n] == 1)`.
      - for a node `n` with `free == False`: `model.Add(y[n] <= sum(x[j] for j in near[n]))`. (When `near[n]` is empty, this is `y[n] <= 0`, i.e. never covered — correct.)
    - Budget constraint (integer-scaled): `costs_int = [int(round(cost(c, self.cfg) * _COST_SCALE)) for c in candidates]`; `budget_int = int(round(budget * _COST_SCALE))`; `model.Add(sum(costs_int[j] * x[j] for j in range(len(candidates))) <= budget_int)`.
-   - Objective: `model.Maximize(sum(y[n].values()))` (maximise the number of reachable nodes). Add a **tiny secondary term to break ties deterministically** in favour of cheaper / higher-road-priority selections, so the chosen edge SET (not just the count) is deterministic across runs/specs:
-     - `model.Maximize(sum(y.values()) * 100_000 - sum(costs_int[j] // 100 for j in range(len(candidates))) * x[j] - sum(x[j]))` — i.e. lex-maximise (reachable count) ≫ (lower cost) ≫ (fewer edges). Keep the secondary terms small enough (factor `100_000`) that they never flip the primary count by one. **Document this tie-break in a comment.** (If implementing the combined objective is awkward, maximise `sum(y.values())` only and instead enforce determinism by fixing lexicographic preferences via search hints — but the weighted scalar is simpler and recommended.)
+   - Objective: lex-maximise (reachable count) ≫ (lower cost) ≫ (fewer edges), via a **single weighted scalar** so the chosen edge SET (not just the count) is deterministic across runs/specs:
+     - `model.Maximize(sum(y.values()) * 100_000 - sum(costs_int[j] // 100 for j in range(len(candidates))) * x[j] - sum(x[j]))`
+     - The `100_000` multiplier keeps the secondary terms small enough that they never flip the primary count by one (max reachable count is `graph.number_of_nodes()` ≤ ~1e6 for any graph the ILP is ever called on; `100_000 * n` dwarfs the secondary cost/edge penalties which are bounded by `total_cost//100 + n`). **Document this tie-break in a comment.**
    - Set the time limit: `model.parameters.max_time_in_seconds = self.time_limit_s`. Also set `model.parameters.num_search_workers = 1` for full determinism (CP-SAT is otherwise nondeterministic across thread counts).
 6. Solve: `solver = cp_model.CpSolver(); status_code = solver.Solve(model)`. Wrap the call in a broad try/except that catches `RuntimeError` from OR-Tools and re-raises as `RuntimeError("ILPSolver: OR-Tools failed: <msg>")` — do NOT swallow.
 7. Read results:
@@ -416,9 +416,8 @@ Body of `solve` (implement exactly this logic):
    - `chosen_idx = [j for j in range(len(candidates)) if solver.Value(x[j]) == 1]`.
    - `chosen = [candidates[j] for j in chosen_idx]`.
    - `spent = sum(cost(c, self.cfg) for c in chosen)` (float, from the real costs — NOT the scaled ints).
-   - `surrogate_count = _reachable_count(graph, chosen, self.cfg)` where `_reachable_count` is a module-local helper with the SAME body as the test's `_reachable_count` (Step 1) — factor it once here and import/reuse in the test if you prefer, but keep it private. `surrogate = surrogate_count / total` (guard `total > 0`).
-   - `opt_gap`: if `status == "OPTIMAL"` → `0.0`; elif `status == "FEASIBLE"` and `solver.ObjectiveValue() > 0` → `abs(solver.BestObjectiveBound() - solver.ObjectiveValue()) / abs(solver.ObjectiveValue())`; else `1.0` (or `float("nan")` for INFEASIBLE/UNKNOWN — pick one and document; recommended: `1.0` for INFEASIBLE, `float("nan")` for UNKNOWN).
-   - Note: with the weighted scalar objective in step 5, `solver.ObjectiveValue()` is the weighted sum, not the raw count — so compute `opt_gap` from the **bound on the primary count** if available, else report `0.0` on OPTIMAL and `nan`/`1.0` otherwise. Keep `opt_gap` semantics documented; tests only assert `opt_gap == 0.0` when `status == "OPTIMAL"`.
+   - `surrogate_count = _reachable_count(graph, chosen, self.cfg)` (the module-local helper defined in Step 2.9). `surrogate = surrogate_count / total` (guard `total > 0`).
+   - `opt_gap`: if `status == "OPTIMAL"` → `0.0`; elif `status == "FEASIBLE"` and `solver.ObjectiveValue() > 0` → `abs(solver.BestObjectiveBound() - solver.ObjectiveValue()) / abs(solver.ObjectiveValue())`; else `1.0` for `INFEASIBLE`, `float("nan")` for `UNKNOWN`. **Document** that with the weighted scalar objective, `solver.ObjectiveValue()` is the weighted sum, so this gap is over the weighted objective (not the raw count); tests only assert `opt_gap == 0.0` when `status == "OPTIMAL"`.
 8. Return:
 ```python
 return Solution(
@@ -441,16 +440,40 @@ return Solution(
 )
 ```
 
-Define the module-local `_reachable_count(graph, chosen, cfg)` helper at module level (private, leading underscore) — it is the single source of truth the ILP and the test both use; the test MAY import it (`from bike_rl.optim.ilp import _reachable_count`) instead of duplicating, to guarantee parity. If you do that, the test's own `_reachable_count` becomes a thin re-export. **Recommended**: define it once in `ilp.py` and import it in the test.
+9. **Module-local helper** `_reachable_count(graph, chosen, cfg) -> int` — define it at module level (private, leading underscore). This is the **single source of truth** the ILP and the tests both use; `tests/test_ilp.py` imports it (see Step 1) rather than duplicating, to guarantee parity. Body mirrors the radius branch of `bike_rl.metrics.coverage` exactly:
+```python
+def _reachable_count(graph: _NXGraph, chosen: list[Candidate], cfg: Config) -> int:
+    """Number of graph nodes within cfg.coverage_radius_m of any bike-lane endpoint.
+
+    Mirrors the radius branch of bike_rl.metrics.coverage; uses the SAME
+    _metres_between so it cannot drift from coverage().
+    """
+    bike = {n for u, v, d in graph.edges(data=True)
+            if d.get("bike_lane") == "yes" for n in (u, v)}
+    for e in chosen:
+        bike.add(e.u)
+        bike.add(e.v)
+    covered = 0
+    for n, ndata in graph.nodes(data=True):
+        for bn in bike:
+            if _metres_between(ndata, graph.nodes[bn]) <= cfg.coverage_radius_m:
+                covered += 1
+                break
+    return covered
+```
+
 
 **Verify**:
 - `ruff check bike_rl/optim/ilp.py` → exit 0
 - `ruff format --check bike_rl/optim/ilp.py` → exit 0 (run `ruff format` if needed)
 - `mypy --strict bike_rl` → exit 0 (add narrow `# type: ignore[...]` only where OR-Tools typing genuinely fails; justify each in a comment)
 
-### Step 3: Write the `test_ilp.py` test bodies
+### Step 3: Write the headline `TestILPSolver` tests
 
-Add the `TestILPSolver` class to `tests/test_ilp.py` (after the fixtures/helpers from Step 1). Tests (one per method, mirror `test_local_search.py` naming):
+Add the `TestILPSolver` class to `tests/test_ilp.py` (after the fixtures/helpers
+from Step 1). **This plan lands only the headline tests that prove the oracle
+against brute force** — the rest are 013b/013c. Mirror `test_local_search.py`
+naming. Tests in this plan:
 
 1. `test_matches_brute_force_on_tiny_instance` — **the core §9/§12 oracle test**. Parametrise over `budget in (600.0, 1000.0, 1200.0, 1800.0)` and the corresponding verified brute-force reachable counts `expected_count in (5, 5, 7, 9)`. For each budget: solve with `ILPSolver(default_cfg, default_weights)`; compute `best, _ = _brute_best(graph, candidates, default_cfg, budget)`; assert `sol.extra["surrogate_count"] == best == expected_count`; assert `sol.spent <= budget + 1e-9`. **Do NOT** assert a specific edge set at budget 1200 (multiple disjoint pairs are optimal — assert only the count). Use:
    ```python
@@ -462,30 +485,18 @@ Add the `TestILPSolver` class to `tests/test_ilp.py` (after the fixtures/helpers
        assert sol.extra["surrogate_count"] == best == expected
        assert sol.spent <= budget + 1e-9
    ```
-2. `test_disjoint_optimum_at_budget_1200` — assert that at budget 1200 the ILP's chosen set is not a contiguous chain: the reachable count is 7 AND the chosen edges are pairwise disjoint (no shared endpoint) — i.e. it picked a max-coverage-with-disjoint-endpoints global solution, not a greedy-style chain. (Two disjoint 600-cost edges each covering 2 new far nodes.)
-3. `test_respects_budget_never_overspends` — for budgets `(1.0, 600.0, 1200.0, 1e9)`: `sol.spent <= budget + 1e-9`.
-4. `test_respects_time_limit_zero` — `ILPSolver(cfg, weights, time_limit_s=0.0)`: returns a `Solution` (status may be UNKNOWN or FEASIBLE; assert it does NOT crash and `runtime_s >= 0.0`). Do NOT assert optimality at time limit 0.
-5. `test_optimal_status_and_zero_gap_on_small_instance` — `ILPSolver(default_cfg, default_weights, time_limit_s=10.0).solve(graph, candidates, 1800.0)`; assert `sol.extra["status"] == "OPTIMAL"`; assert `sol.extra["opt_gap"] == 0.0`; assert `sol.solver == "ilp"`.
-6. `test_deterministic_across_runs` — solve twice at budget 1200; assert identical `edges`, `spent`, `extra["surrogate_count"]`, `extra["status"]`. (Determinism comes from `num_search_workers = 1` + the weighted tie-break.)
-7. `test_does_not_mutate_input_candidates` — snapshot the list; solve; assert unchanged.
-8. `test_solution_record_is_well_formed` — assert `isinstance(sol, Solution)`, `sol.solver == "ilp"`, `sol.runtime_s >= 0.0`, `extra` has all documented keys with correct types (`status` str, `surrogate_count` int, `n_candidates == 8`, `n_selected == len(sol.edges)`, `solver_engine == "ortools"`, `coverage_mode == "radius"`).
-9. `test_objective_consistency_with_shared_scorer` — solve with `cov_only_weights`; assert `sol.objective == pytest.approx(objective(graph, sol.edges, cov_only_weights, default_cfg))`. (The ILP's reported `Solution.objective` equals a fresh `objective()` recompute on its edges — the §8 comparability guarantee.)
-10. `test_empty_when_no_affordable_edge` — budget `1.0` with the costly-but-also-present candidates: actually use candidates whose every cost `> 1e9`? No — use budget `0.0` (or `1.0`) so nothing is affordable; assert `sol.edges == []`, `sol.spent == 0.0`, `extra["surrogate_count"] == 3` (only the base {1,2,3} reachable), `extra["status"] == "OPTIMAL"`.
-11. `test_empty_candidates_returns_empty` — `ILPSolver(...).solve(graph, [], 1e9)`; assert `sol.edges == []`, `sol.extra["n_candidates"] == 0`, `sol.extra["status"] == "OPTIMAL"`, `sol.objective == pytest.approx(objective(graph, [], default_weights, default_cfg))`.
-12. `test_surrogate_matches_metrics_coverage_ratio` — for the ILP's chosen S at budget 1800, recompute the reachable fraction with `_metres_between` directly in the test and assert it equals `sol.extra["surrogate"]` within `1e-9` AND that the ILP's reachable fraction ≥ the base `coverage_ratio` (sanity that adding edges never decreases reachable population). This pins the ILP surrogate to `metrics.coverage`'s radius definition.
-13. `test_unsupported_engine_raises` — `ILPSolver(default_cfg, default_weights, solver="gurobi")` raises `ValueError`. (`solver="ortools"` and `solver=None` must NOT raise — covered by every other test implicitly.)
-14. `test_non_radius_mode_raises` — build a `Config` with `coverage_mode="component"` (use `dataclasses.replace(default_cfg, coverage_mode="component")`; import `dataclasses.replace`); `ILPSolver(cfg, default_weights).solve(graph, candidates, 1800.0)` raises `NotImplementedError`. (Confirms the deferred-mode guard fires loudly, not silently.)
+2. `test_respects_budget_never_overspends` — for budgets `(1.0, 600.0, 1200.0, 1e9)`: `sol.spent <= budget + 1e-9`.
+3. `test_optimal_status_and_zero_gap_on_small_instance` — `ILPSolver(default_cfg, default_weights, time_limit_s=10.0).solve(graph, candidates, 1800.0)`; assert `sol.extra["status"] == "OPTIMAL"`; assert `sol.extra["opt_gap"] == 0.0`; assert `sol.solver == "ilp"`.
 
 **Verify**:
-- `pytest -q tests/test_ilp.py` → all pass (14 tests; counts may split with parametrisation — `test_matches_brute_force_on_tiny_instance` expands to 4).
-- `pytest -q` → full suite green, coverage line shows `bike_rl/optim/ilp.py` at ≥80% (it will be ~100%; the only uncovered branches should be the `MODEL_INVALID`/`UNKNOWN` status arms which are hard to hit — if coverage of `ilp.py` specifically is <80% and that drags the **whole-package** gate below 80%, add a `# pragma: no cover` to the genuinely-unreachable status arms and document why; the whole-package gate is `--cov-fail-under=80` on `bike_rl`, currently ~89%, so a small stub addition will not break it).
+- `pytest -q tests/test_ilp.py` → all pass (3 tests; `test_matches_brute_force_on_tiny_instance` expands to 4 parametrised cases ⇒ 6 cases total).
+- `pytest -q` → full suite green, coverage line shows `bike_rl/optim/ilp.py` at ≥80% (it will be ~100%; the genuinely-unreachable `MODEL_INVALID`/`UNKNOWN`/`INFEASIBLE` status arms are the only uncovered branches — if coverage of `ilp.py` specifically drags the **whole-package** gate below 80%, add a `# pragma: no cover` to those status arms with a one-line justification. The whole-package gate is `--cov-fail-under=80` on `bike_rl`, currently ~89%, so a small addition will not break it.).
 
 ## Test plan
 
-- New file: `tests/test_ilp.py` — the 14 tests above (with parametrisation, ~17 test cases).
+- New file: `tests/test_ilp.py` — the 3 headline tests above (with parametrisation, ~6 test cases). Plans 013b/013c append the remaining 11 tests.
 - Structural pattern to follow: `tests/test_local_search.py` (module docstring, scoped fixtures, one `TestX` class, `pytest.approx` for floats, `assert ... - 1e-9` tolerances).
 - The brute-force parity test (test 1) is the §12-DoD gate ("ILP matches brute force on ≤12-candidate instances"). The fixture has 8 candidates — well within the ≤12 budget.
-- Determinism (test 6) relies on `num_search_workers = 1` and the weighted lex tie-break from Step 2.5; if it ever fails, that is a real determinism regression in the solver — do NOT weaken the assertion.
 
 ## Done criteria
 
@@ -497,8 +508,9 @@ Machine-checkable. ALL must hold:
 - [ ] `ruff format --check .` exits 0.
 - [ ] `mypy --strict bike_rl` exits 0.
 - [ ] `grep -n "NotImplementedError(\"Optimiser plan\")" bike_rl/optim/ilp.py` returns no matches.
+- [ ] `_reachable_count` is defined exactly ONCE (in `bike_rl/optim/ilp.py`) and imported by the test (`grep -rn "_reachable_count" bike_rl/ tests/` shows one definition, one import).
 - [ ] No files outside `bike_rl/optim/ilp.py` and `tests/test_ilp.py` are modified (`git status --short`).
-- [ ] `plans/README.md` status row for plan 013 updated (TODO → DONE).
+- [ ] `plans/README.md` status row for plan 013a updated (TODO → DONE).
 
 ## STOP conditions
 
@@ -509,16 +521,17 @@ Stop and report back (do not improvise) if:
 - `from bike_rl.metrics import _metres_between` raises `ImportError` (the private helper was renamed/removed in `metrics.py`). This means the ILP surrogate and `metrics.coverage` can no longer be guaranteed to share a definition — STOP and report so the plan can be realigned (do NOT duplicate the formula and risk drift).
 - `bike_rl/optim/greedy.Solution`'s field set or constructor no longer matches the excerpt (later `evaluate.py` plan depends on it).
 - CP-SAT reports `MODEL_INVALID` on the tiny fixture — indicates the integer scaling or a constraint is malformed in a way the plan didn't anticipate; report the solver status and the model.
-- The weighted lex tie-break in Step 2.5 is not enough to make `test_deterministic_across_runs` pass across two OR-Tools versions — report; do NOT make the ILP nondeterministic to "fix" it.
+- The weighted lex tie-break in Step 2.5 is not enough to make brute-force parity (or, later, the 013b determinism test) hold across two OR-Tools versions — report; do NOT make the ILP nondeterministic to "fix" it.
 - You find that matching brute force requires optimising something other than the reachable-node count (i.e. the spec's coverage-only objective is *not* linearisable as modelled here) — STOP; the design assumption is false.
 
 ## Maintenance notes
 
 For the human/agent owning this code after it lands:
 
+- **Plans 013b/013c** append tests to `tests/test_ilp.py`. They import `max_coverage_instance`, `_brute_best`, `_reachable_count` (from `bike_rl.optim.ilp`), `_edge`, and the three weight fixtures from THIS file — they MUST NOT redefine any of them. If you rename a fixture here, update both follow-up plans.
 - **Later optimiser plan (§11 item 5: `evaluate.py`)** will call `ILPSolver.solve(...)` and place its `Solution` in the §10 table alongside greedy / local-search / RL. It will enforce `cfg.max_candidates_for_ilp` (filtering / refusing to call the ILP above the threshold) — that threshold is **not** this solver's concern. `evaluate.py` will also wire `evaluate_rl_policy` to score a trained PPO policy with the same `objective`.
 - **Full-objective ILP follow-up** (§7 "Full-objective ILP") will extend `ILPSolver` (or a sibling `FullObjectiveILPSolver`) with connectivity via flow/Steiner aux variables and the `coverage_mode == "component"` linearisation, gated to small instances. When that lands, **remove** the `NotImplementedError` guard added in Step 2.2 (don't weaken it now).
 - **Perf**: warm-starting CP-SAT with the greedy solution (`model.AddHint(x[j], 1)` for greedy-chosen edges) is a natural later optimisation for larger instances; not needed for the tiny fixtures here.
 - **Determinism**: kept via `num_search_workers = 1` + the weighted lex objective. If OR-Tools is upgraded and determinism regresses on a platform, the lex-objective weights (`* 100_000`) are the knob — raise the primary multiplier first.
-- **Reviewer focus**: (a) the budget integer-scaling (no rounding can flip feasibility — `_COST_SCALE=1000` and `round` suffice for metres; confirm no candidate cost has sub-millimetre precision that would tie-break wrong); (b) the `opt_gap` semantics (documented; tests only assert `0.0` on OPTIMAL); (c) the `coverage_mode != "radius"` guard raising loudly rather than silently approximating.
-- **Known upstream caveat** (from plan 012): `GreedySolver.solve` raises `TypeError` on exact `(delta/cost, road_priority, -cost)` ties (`max(scored)` falls through to comparing `Candidate`, which is not orderable). The `max_coverage_instance` fixture here deliberately creates such ties, so **do NOT** add an ILP-vs-greedy comparison test on this fixture — it would crash greedy. A one-line greedy tie-break fix is recommended as a separate small follow-up. The ILP-vs-brute-force tests here are solver-agnostic and safe.
+- **Reviewer focus**: (a) the budget integer-scaling (no rounding can flip feasibility — `_COST_SCALE=1000` and `round` suffice for metres; confirm no candidate cost has sub-millimetre precision that would tie-break wrong); (b) the `opt_gap` semantics (documented; tests only assert `0.0` on OPTIMAL); (c) the `coverage_mode != "radius"` guard raising loudly rather than silently approximating; (d) `_reachable_count` defined exactly once and shared with the test.
+- **Known upstream caveat** (from plan 012, resolved by plan 014): `GreedySolver.solve` no longer raises on scoring ties after plan 014. The `max_coverage_instance` fixture deliberately creates such ties; once 014 is DONE, an ILP-vs-greedy comparison test on this fixture becomes safe to add in a future plan — but it is out of scope for 013a/b/c.
