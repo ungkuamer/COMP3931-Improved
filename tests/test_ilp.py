@@ -16,6 +16,7 @@ import pytest
 from bike_rl.candidates import Candidate, candidate_cost
 from bike_rl.config import Config
 from bike_rl.objective import ObjectiveWeights
+from bike_rl.optim.greedy import Solution
 from bike_rl.optim.ilp import ILPSolver, _reachable_count
 
 # ── Helper ───────────────────────────────────────────────────────────────
@@ -183,3 +184,93 @@ class TestILPSolver:
         assert sol.extra["status"] == "OPTIMAL"
         assert sol.extra["opt_gap"] == 0.0
         assert sol.solver == "ilp"
+
+    # ── 013b: determinism, time-limit, well-formedness ───────────────────
+
+    def test_deterministic_across_runs(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Two solves at same budget produce identical results (§11 item 5)."""
+        graph, candidates = max_coverage_instance
+        sol1 = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1200.0)
+        sol2 = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1200.0)
+        assert sol1.edges == sol2.edges
+        assert sol1.spent == pytest.approx(sol2.spent)
+        assert sol1.extra["surrogate_count"] == sol2.extra["surrogate_count"]
+        assert sol1.extra["status"] == sol2.extra["status"]
+
+    def test_respects_time_limit_zero(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Solver does not hang/raise when given zero time limit."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights, time_limit_s=0.0).solve(
+            graph, candidates, 1800.0
+        )
+        assert sol.solver == "ilp"
+        assert sol.runtime_s >= 0.0
+        assert isinstance(sol.edges, list)
+
+    def test_solution_record_is_well_formed(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Solution record has all documented extra keys with correct types (§10 table)."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1800.0)
+        assert isinstance(sol, Solution)
+        assert sol.solver == "ilp"
+        assert sol.runtime_s >= 0.0
+
+        extra = sol.extra
+        assert isinstance(extra["status"], str)
+        assert extra["status"] in {"OPTIMAL", "FEASIBLE", "INFEASIBLE", "UNKNOWN"}
+        assert extra["objective_kind"] == "coverage_only"
+        assert isinstance(extra["surrogate"], float)
+        assert 0.0 <= extra["surrogate"] <= 1.0
+        assert isinstance(extra["surrogate_count"], int)
+        assert extra["surrogate_count"] == 9
+        assert extra["n_candidates"] == 8
+        assert extra["n_selected"] == len(sol.edges)
+        assert extra["solver_engine"] == "ortools"
+        assert extra["coverage_mode"] == "radius"
+        assert isinstance(extra["opt_gap"], float)
+        assert extra["opt_gap"] == pytest.approx(0.0)
+
+    def test_does_not_mutate_input_candidates(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """Solve does not mutate the input candidates list."""
+        graph, candidates = max_coverage_instance
+        snap = [(c.u, c.v, c.length, c.road_priority) for c in candidates]
+        ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1800.0)
+        assert [(c.u, c.v, c.length, c.road_priority) for c in candidates] == snap
+        assert len(candidates) == len(snap)
+
+    def test_disjoint_optimum_at_budget_1200(
+        self,
+        max_coverage_instance: tuple[nx.MultiDiGraph, list[Candidate]],
+        default_cfg: Config,
+        default_weights: ObjectiveWeights,
+    ) -> None:
+        """At budget 1200, ILP picks 2 disjoint edges covering 7 nodes total."""
+        graph, candidates = max_coverage_instance
+        sol = ILPSolver(default_cfg, default_weights).solve(graph, candidates, 1200.0)
+        assert sol.extra["surrogate_count"] == 7
+        endpoints: list[int | str] = []
+        for e in sol.edges:
+            endpoints += [e.u, e.v]
+        assert len(endpoints) == len(set(endpoints)), (
+            "chosen edges must be pairwise endpoint-disjoint"
+        )
