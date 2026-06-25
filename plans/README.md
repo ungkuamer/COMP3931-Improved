@@ -26,7 +26,7 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 012  | `optim/local_search.py` (LocalSearchSolver: greedy seed + 1-opt/2-opt) + `test_local_search.py` (OPTIMIZER_SPEC §11.3) | P1 | M | 011 | DONE |
 | 013a | `optim/ilp.py` (ILPSolver: coverage-only CP-SAT oracle, budgeted max-coverage) + headline `test_ilp.py` (fixture, brute-force helpers, brute-force parity DoD) — see `plans/013a-ilp-solver-core.md` (OPTIMIZER_SPEC §11.4) | P1 | M | 010, 011 | DONE |
 | 013b | ILP determinism / time-limit / well-formedness tests (append to `tests/test_ilp.py`) — see `plans/013b-ilp-determinism-tests.md` | P2 | S | 013a | TODO |
-| 013c | ILP engine/mode guards, `objective()` comparability, `metrics.coverage`-radius parity, edge cases (append to `tests/test_ilp.py`) — see `plans/013c-ilp-guards-and-parity.md` | P2 | S | 013a, 013b | TODO |
+| 013c | ILP engine/mode guards, `objective()` comparability, `metrics.coverage`-radius parity, edge cases (append to `tests/test_ilp.py`) — see `plans/013c-ilp-guards-and-parity.md` | P2 | S | 013a, 013b | DONE |
 | 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
