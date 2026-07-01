@@ -8,17 +8,26 @@ graphs, extracts candidates once (shared by all solvers and the RL env —
 small MaskablePPO and scores it with the shared ``objective``, then prints
 and writes the §10 reporting table.
 
-The headline sanity check is **greedy ≥ RL** (OPTIMIZER_SPEC §1: greedy is
-the minimum bar RL must clear). With a lightly-trained PPO this is the
-expected result; the script reports the gap and a one-line diagnosis.
+By default the comparison uses a **monotone coverage-only objective** so
+that the ILP ceiling is valid and greedy's submodular guarantee holds.
+Use ``--weighted-objective`` to reproduce prior objective-sensitivity
+findings with the legacy weighted objective
+(``0.4·conn + 0.4·cov − 0.2·frag``); on that non-monotone objective greedy
+can stall mid-construction and RL may appear to beat it — see
+``FINDINGS.md`` for the full diagnosis. ``--coverage-only`` is accepted as
+a backward-compatible no-op (it is now the default).
 
 Examples:
-    # Optimisers only (no RL training); fast.
+    # Optimisers only (no RL training); fast. Coverage-only default.
     python scripts/run_comparison.py --city "Otley, UK" --budget 200000
 
     # Include a small RL row (trains ~4096 timesteps first).
     python scripts/run_comparison.py --city "Otley, UK" --budget 200000 \\
         --with-rl --timesteps 4096 --n-envs 2
+
+    # Reproduce the legacy weighted-objective diagnostic.
+    python scripts/run_comparison.py --city "Otley, UK" --budget 200000 \\
+        --weighted-objective
 
     # Tiny bbox for a quick sanity check.
     python scripts/run_comparison.py --bbox 53.9065 53.9045 -1.6929 -1.6949 \\
@@ -74,10 +83,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--timesteps", type=int, default=4096, help="RL training timesteps")
     p.add_argument("--n-envs", type=int, default=2, help="RL training envs")
-    p.add_argument(
+    obj_grp = p.add_mutually_exclusive_group()
+    obj_grp.add_argument(
         "--coverage-only",
         action="store_true",
-        help="Use coverage-only weights so the ILP is a true optimality ceiling.",
+        help=(
+            "Use coverage-only weights (now the default; accepted for "
+            "backward compatibility)."
+        ),
+    )
+    obj_grp.add_argument(
+        "--weighted-objective",
+        action="store_true",
+        help=(
+            "Use the legacy weighted objective (0.4·conn + 0.4·cov − 0.2·frag) "
+            "instead of the default coverage-only metric. Use this to reproduce "
+            "prior objective-sensitivity findings; on that non-monotone objective "
+            "greedy can stall mid-construction."
+        ),
     )
     p.add_argument("--ilp-time-limit", type=float, default=60.0)
     p.add_argument(
@@ -94,6 +117,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--verbose", action="store_true")
     return p
+
+
+def _objective_weights(args: argparse.Namespace) -> ObjectiveWeights:
+    """Select objective weights based on CLI flags.
+
+    Coverage-only is the default (monotone submodular — matches the ILP
+    ceiling and greedy's guarantee). ``--weighted-objective`` opts into the
+    legacy weighted objective for objective-sensitivity / reproducibility
+    runs. ``--coverage-only`` is a backward-compatible no-op (it is now the
+    default).
+    """
+    if args.weighted_objective:
+        return ObjectiveWeights()
+    return ObjectiveWeights(connectivity=0.0, coverage=1.0, fragmentation=0.0)
 
 
 def _label(args: argparse.Namespace) -> str:
@@ -166,11 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         ilp_time_limit_s=args.ilp_time_limit,
         local_search_time_limit_s=args.ls_time_limit,
     )
-    weights = (
-        ObjectiveWeights(connectivity=0.0, coverage=1.0, fragmentation=0.0)
-        if args.coverage_only
-        else ObjectiveWeights()
-    )
+    weights = _objective_weights(args)
 
     run_context = RunContext.create(Path(args.out_dir), f"compare_{_label(args)}")
     run_context.ensure_output_dir()
@@ -207,27 +240,31 @@ def main(argv: list[str] | None = None) -> int:
     table = format_comparison_table(sols, instance)
     load_s = time.perf_counter() - t0
 
-    # ── Sanity check: greedy ≥ RL (OPTIMIZER_SPEC §1 / §11 item 6) ──
+    # ── Sanity check (OPTIMIZER_SPEC §1 / §11 item 6) ──
     by = {s.solver: s for s in sols}
+    obj_mode = "weighted (legacy)" if args.weighted_objective else "coverage-only (default)"
     diagnosis = ""
     if "rl" in by and "greedy" in by:
         g_obj = by["greedy"].objective
         r_obj = by["rl"].objective
         if r_obj > g_obj + 1e-9:
             diagnosis = (
-                f"\n\n**Sanity check:** RL ({r_obj:.4f}) > greedy ({g_obj:.4f}) — "
-                "RL clears the greedy bar. ✅"
+                f"\n\n**Sanity check ({obj_mode}):** RL ({r_obj:.4f}) > greedy "
+                f"({g_obj:.4f}). On the coverage-only objective greedy has a "
+                "submodular guarantee (≥63%), so this is unexpected — investigate "
+                "RL reward shaping or candidate-set fairness. On the weighted "
+                "objective the non-monotone fragmentation penalty can make greedy "
+                "stall; use `--weighted-objective` to reproduce that diagnostic."
             )
         else:
             gap = (g_obj - r_obj) / g_obj if g_obj > 0 else 0.0
             diagnosis = (
-                f"\n\n**Sanity check:** greedy ({g_obj:.4f}) ≥ RL ({r_obj:.4f}) — "
-                f"RL is {gap * 100:.1f}% behind greedy. This is expected for a "
-                f"lightly-trained PPO ({args.timesteps} timesteps): greedy is a "
-                "strong, deterministic baseline (submodular guarantee) while PPO "
-                "needs substantial training + reward shaping to match it. "
-                "Diagnosis: increase --timesteps, tune PPO hyperparameters, or "
-                "revise the reward shaping (§3.2). ⚠️"
+                f"\n\n**Sanity check ({obj_mode}):** greedy ({g_obj:.4f}) ≥ RL "
+                f"({r_obj:.4f}) — RL is {gap * 100:.1f}% behind greedy. This is the "
+                "expected result on the coverage-only objective (greedy's "
+                "submodular guarantee vs a lightly-trained PPO with "
+                f"{args.timesteps} timesteps). Increase --timesteps or tune PPO "
+                "hyperparameters for a closer race. ⚠️"
             )
     elif "rl" not in by:
         diagnosis = "\n\n**Sanity check:** no RL row (--with-rl not set); greedy/LS/ILP only."
