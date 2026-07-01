@@ -1,0 +1,192 @@
+# Compact Vertical-Slice Plan Template
+
+Every plan is written for an executor model that has **zero context for this slice**: it has not seen the advisor session, audit, or surrounding plans. It may be a smaller model. Keep the plan compact, but do not omit details required for safe execution.
+
+A compact slice plan has three properties:
+
+1. **Vertical outcome** — one behavior, risk reduction, test baseline, or migration increment that can be reviewed independently.
+2. **Focused context** — enough evidence and conventions for this slice only; no broad codebase tour.
+3. **Verification gates** — commands and expected results that prove this slice is done.
+
+File naming: `plans/NNN-short-slug.md`, numbered in recommended execution order. Do not create a directory per plan.
+
+## Size and Split Rules
+
+Target 60–140 lines per plan. Split before writing if the plan would:
+
+- exceed roughly 180 lines,
+- modify more than 2–4 in-scope source files excluding tests,
+- require more than 5 implementation steps,
+- mix unrelated behaviors or multiple endpoints/features,
+- combine setup, refactor, behavior change, and cleanup in one file,
+- need broad context that would be repeated across many sections.
+
+When splitting, make each child plan independently useful and testable. Use dependencies in `plans/README.md` for order.
+
+---
+
+## Template
+
+```markdown
+# Plan NNN: <Imperative title for one vertical slice>
+
+> **Executor instructions**: Execute only this slice. Run each verification
+> command before moving on. If a STOP condition occurs, stop and report — do
+> not broaden scope or pull work from neighboring plans.
+>
+> **Drift check**: `git diff --stat <planned-at SHA>..HEAD -- <in-scope paths>`
+> If any in-scope file changed, compare the current-state evidence below with
+> live code before editing. Treat mismatches as a STOP condition.
+
+## Status
+
+- **Priority**: P1 | P2 | P3
+- **Effort**: S | M
+- **Risk**: LOW | MED | HIGH
+- **Depends on**: `plans/NNN-*.md` or `none`
+- **Category**: bug | security | perf | tests | tech-debt | migration | dx | docs | direction
+- **Planned at**: commit `<short SHA>`, <YYYY-MM-DD>
+
+## Slice outcome
+
+1–3 sentences describing exactly what will be true after this plan lands. Name
+the behavior, code path, or verification gap this slice addresses.
+
+## Why this matters
+
+2–4 sentences. State the concrete cost/risk today and why this slice is the
+smallest useful increment.
+
+## Current-state evidence
+
+Keep this focused:
+
+- `path/file.ext:line` — what exists today and why it matters.
+- `path/test.ext:line` — relevant existing test pattern, if any.
+- Convention to match: `path/example.ext:line` — one sentence.
+
+Use short excerpts only when a line reference alone is not enough to prevent
+ambiguity. Avoid pasting whole functions unless tiny and central.
+
+## Commands needed
+
+| Purpose | Command | Expected on success |
+|---------|---------|---------------------|
+| Focused tests | `<command>` | exit 0; named tests pass |
+| Typecheck/lint if relevant | `<command>` | exit 0 |
+
+Use exact commands discovered during recon. Include only commands this slice
+actually needs.
+
+## Scope
+
+**In scope**:
+- `path/to/file.ext`
+- `path/to/file.test.ext`
+
+**Out of scope**:
+- Neighboring features/endpoints not named above.
+- Broad refactors, renames, formatting-only edits, or dependency changes unless explicitly listed.
+
+## Steps
+
+### Step 1: <imperative action>
+
+Precise instruction naming exact files/symbols. Keep it small enough to verify.
+
+**Verify**: `<command>` → <expected result>
+
+### Step 2: <imperative action>
+
+Precise instruction.
+
+**Verify**: `<command>` → <expected result>
+
+(Prefer 3–5 steps total. If you need more, split the plan.)
+
+## Test plan
+
+- Add or update tests in `path/to/test.ext` for: <case 1>, <case 2>.
+- Follow the structure of `path/existing-test.ext:line` if applicable.
+- Verification: `<focused test command>` → all targeted tests pass.
+
+## Done criteria
+
+All must hold:
+
+- [ ] Slice outcome is true for the named code path.
+- [ ] Focused tests pass with `<command>`.
+- [ ] Broader required check passes with `<command>` or is explicitly not needed.
+- [ ] No files outside the in-scope list are modified, except `plans/README.md` status if instructed.
+- [ ] No secret values are added to code, tests, logs, or plan files.
+
+## STOP conditions
+
+Stop and report if:
+
+- Current-state evidence does not match live code after drift check.
+- The fix requires files outside scope.
+- The slice grows beyond 5 implementation steps.
+- Verification fails twice after reasonable fixes.
+- A security-sensitive secret value appears; report only location and credential type.
+
+## Maintenance notes
+
+1–3 bullets for reviewers/future maintainers. Mention deferred follow-up slices
+by plan file when relevant.
+```
+
+---
+
+## Index File: `plans/README.md`
+
+Keep the index compact. It coordinates slices; it does not duplicate each plan.
+
+```markdown
+# Compact Implementation Plans
+
+Generated by the `improve-slices` skill on <date>. Execute one plan at a time.
+Each plan is a vertical slice with its own verification gates.
+
+## Execution order
+
+| Plan | Slice outcome | Priority | Effort | Depends on | Status |
+|------|---------------|----------|--------|------------|--------|
+| 001 | ... | P1 | S | — | TODO |
+| 002 | ... | P1 | S | 001 | TODO |
+
+Status values: TODO | IN PROGRESS | DONE | BLOCKED | REJECTED
+
+## Dependency notes
+
+- `002` depends on `001` because <reason>.
+
+## Shared repo commands
+
+| Purpose | Command |
+|---------|---------|
+| Typecheck | `<command>` |
+| Test | `<command>` |
+| Lint | `<command>` |
+
+## Findings considered and rejected
+
+- <finding>: rejected because <one line>.
+
+## Superseded or stale plans
+
+- <plan>: superseded by <plan> because <one line>.
+```
+
+## Quality Bar
+
+Before finishing each plan, check:
+
+- Is this one vertical outcome, not a bucket of related work?
+- Could a fresh executor complete it without opening another plan, except for explicit dependencies?
+- Are exact files, symbols, commands, and expected results named?
+- Is context focused enough to keep the file small?
+- Would adding another step/file indicate that this should be split?
+- Are STOP conditions specific enough to prevent scope creep?
+- Are secret values excluded?
+- Is the `Planned at` SHA filled in?
