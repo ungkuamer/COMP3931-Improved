@@ -30,6 +30,8 @@ These plans implement the work described in `RECREATE_SPEC.md` (RL pipeline),
 | 014  | Fix `GreedySolver` `TypeError` on exact scoring ties (additive `-index` tie-break) + `TestGreedyTieBreak` regression — see `plans/014-greedy-tiebreak-fix/` | P1 | S | 011 | DONE |
 | 015  | `optim/evaluate.py` (`evaluate_solver`, `evaluate_rl_policy`, `run_comparison`, `format_comparison_table`, `Instance`) + `tests/test_optim_evaluate.py` (OPTIMIZER_SPEC §11.5) | P1 | M | 010, 011, 012, 013a | DONE |
 | 016  | Run the full comparison on one small city → §10 table → sanity-check greedy ≥ RL (OPTIMIZER_SPEC §11.6) — `scripts/run_comparison.py` + top-level `FINDINGS.md` | P1 | M | 015 | DONE |
+| 017  | Make `scripts/run_comparison.py` use a monotone coverage-only reported objective by default, with explicit legacy weighted mode — see `plans/017-monotone-comparison-objective.md` | P1 | S | 016 | DONE |
+| 018  | Show coverage/connectivity/fragmentation component metrics in comparison tables while keeping one headline objective — see `plans/018-comparison-metric-breakdown.md` | P1 | S | 017 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
@@ -258,6 +260,16 @@ REJECTED (with one-line rationale).
     incremental `objective_delta` (plan 010 deferred the full-recompute — the
     coverage-only greedy run took 9m41s from re-`objective`-ing per candidate),
     and the full-objective ILP (§7) for a weighted ceiling.
+  - 017 (monotone comparison objective) depends on 016's finding that the
+    default weighted objective is non-monotone. It changes only the comparison
+    script default: coverage-only becomes the headline reported objective,
+    `--coverage-only` remains accepted, and an explicit legacy weighted flag
+    preserves reproducibility of the old Otley diagnosis. It must not change
+    `ObjectiveWeights` defaults globally or RL reward semantics.
+  - 018 (comparison metric breakdown) depends on 017 so the headline score is
+    already monotone before adding more columns. It keeps coverage,
+    connectivity, and fragmentation visible in the §10 table as diagnostics,
+    instead of folding them back into one fragile weighted score.
 
 ## Findings considered and rejected
 
